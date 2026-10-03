@@ -632,6 +632,64 @@ button.owned-toggle.owned {
   padding: 4px;
 }
 
+/* ---------- Progress photos ---------- */
+
+.thumb {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--border);
+}
+
+.thumb-small {
+  flex: none;
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--border);
+}
+
+.photo-row .badge {
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.photo-frame {
+  background: #000000;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.photo-frame img {
+  display: block;
+  width: 100%;
+  max-height: 65vh;
+  object-fit: contain;
+}
+
+.photo-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 10px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.photo-nav button.small {
+  width: 56px;
+}
+
+.photo-meta {
+  font-weight: 600;
+}
+
 /* ---------- Shopping list ---------- */
 
 .shop-range {

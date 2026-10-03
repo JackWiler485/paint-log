@@ -71,6 +71,7 @@ const routes = [
   [/^#\/step\/(\d+)\/edit$/, (m) => showStepForm(Number(m[1]))],
   [/^#\/paints$/, () => showPaints()],
   [/^#\/shop$/, () => showShop()],
+  [/^#\/photo\/(\d+)$/, (m) => showPhoto(Number(m[1]))],
   [/^#\/paint\/new$/, () => showPaintForm(null)],
   [/^#\/paint\/(\d+)$/, (m) => showPaintForm(Number(m[1]))],
   [/^#\/settings$/, () => showSettings()],
@@ -236,11 +237,30 @@ async function showArmy(armyId) {
   const modelTotal = Object.values(totals).reduce((sum, n) => sum + n, 0);
   $('army-progress').textContent = modelTotal ? plural(modelTotal, 'model') + ': ' + describeCounts(totals) : '';
 
+  // The latest photo of each miniature, shown as a small picture.
+  const latestPhoto = new Map();
+  for (const photo of await db.photos.where('miniatureId').anyOf(minis.map((m) => m.id)).toArray()) {
+    const current = latestPhoto.get(photo.miniatureId);
+    if (!current || photo.takenAt > current.takenAt) {
+      latestPhoto.set(photo.miniatureId, photo);
+    }
+  }
+  const thumbUrl = newUrlGroup('army-thumbs');
+
   const list = $('mini-list');
   list.replaceChildren();
   for (const mini of minis) {
     const link = el('a', 'list-item');
     link.href = '#/mini/' + mini.id;
+    if (latestPhoto.size) {
+      const photo = latestPhoto.get(mini.id);
+      const thumb = el(photo ? 'img' : 'span', 'thumb-small');
+      if (photo) {
+        thumb.src = thumbUrl(photo.thumb || photo.blob);
+        thumb.alt = '';
+      }
+      link.append(thumb);
+    }
     const text = el('div', 'list-text');
     text.append(el('div', 'list-title', mini.name));
     const models = modelCountOf(mini);
@@ -452,6 +472,8 @@ async function showMini(miniId) {
   currentMiniArmyName = army ? army.name : '';
   drawMini();
   await drawMiniScheme();
+  setText('photo-status', '');
+  await drawMiniPhotos();
   showScreen('mini');
 }
 
@@ -1258,6 +1280,214 @@ $('paint-delete').addEventListener('click', async () => {
   goTo('#/paints');
 });
 
+// ---------- Progress photos on the miniature screen ----------
+
+$('photo-add').addEventListener('click', () => $('photo-input').click());
+
+$('photo-input').addEventListener('change', async () => {
+  const input = $('photo-input');
+  const files = [...(input.files || [])];
+  input.value = '';
+  if (!files.length) {
+    return;
+  }
+  const mini = currentMini;
+  let saved = 0;
+  const problems = [];
+  for (const [i, file] of files.entries()) {
+    setText('photo-status', 'Saving photo ' + (i + 1) + ' of ' + files.length + '…');
+    try {
+      const prepared = await preparePhoto(file);
+      await db.photos.add({ miniatureId: mini.id, stage: mini.stage, note: '', ...prepared });
+      saved++;
+    } catch (err) {
+      problems.push((file.name || 'photo') + ': ' + err.message);
+    }
+  }
+  if (problems.length) {
+    setText('photo-status', 'Saved ' + saved + '. Could not save ' + problems.join('; '), 'bad');
+  } else {
+    setText('photo-status', saved === 1 ? 'Photo saved.' : saved + ' photos saved.', 'ok');
+  }
+  if (currentMini && currentMini.id === mini.id) {
+    await drawMiniPhotos();
+  }
+});
+
+// The timeline: newest photo first, with date, stage and note.
+async function drawMiniPhotos() {
+  const photos = await db.photos.where('miniatureId').equals(currentMini.id).toArray();
+  photos.sort((a, b) => b.takenAt - a.takenAt);
+  const url = newUrlGroup('mini-photos');
+  const list = $('photo-list');
+  list.replaceChildren();
+  for (const photo of photos) {
+    const link = el('a', 'list-item photo-row');
+    link.href = '#/photo/' + photo.id;
+    const img = el('img', 'thumb');
+    img.src = url(photo.thumb || photo.blob);
+    img.alt = 'Photo from ' + formatDate(photo.takenAt);
+    const text = el('div', 'list-text');
+    text.append(el('div', 'list-title', formatDate(photo.takenAt)));
+    if (photo.stage) {
+      text.append(stageBadge(photo.stage));
+    }
+    if (photo.note) {
+      text.append(el('div', 'list-sub', photo.note));
+    }
+    link.append(img, text, el('span', 'chevron', '›'));
+    const item = el('li');
+    item.append(link);
+    list.append(item);
+  }
+  $('photo-empty').hidden = photos.length > 0;
+}
+
+// ---------- Photo viewer ----------
+
+let viewerPhotos = [];
+let viewerIndex = 0;
+let viewerMini = null;
+
+for (const stage of STAGES) {
+  const option = el('option', '', stage.label);
+  option.value = stage.key;
+  $('photo-stage').append(option);
+}
+
+async function showPhoto(photoId) {
+  const photo = await db.photos.get(photoId);
+  if (!photo) {
+    return goTo('#/');
+  }
+  viewerMini = await db.miniatures.get(photo.miniatureId);
+  viewerPhotos = (await db.photos.where('miniatureId').equals(photo.miniatureId).toArray())
+    .sort((a, b) => b.takenAt - a.takenAt);
+  viewerIndex = viewerPhotos.findIndex((p) => p.id === photoId);
+  $('photo-back').href = '#/mini/' + photo.miniatureId;
+  $('photo-back').textContent = '‹ ' + (viewerMini ? viewerMini.name : 'Back');
+  drawPhoto();
+  showScreen('photo');
+}
+
+function drawPhoto() {
+  const photo = viewerPhotos[viewerIndex];
+  const url = newUrlGroup('viewer');
+  $('photo-full').src = url(photo.blob);
+  $('photo-full').alt = 'Photo from ' + formatDate(photo.takenAt);
+  $('photo-position').textContent = (viewerIndex + 1) + ' of ' + viewerPhotos.length;
+  setInactive($('photo-prev'), viewerIndex === 0);
+  setInactive($('photo-next'), viewerIndex === viewerPhotos.length - 1);
+  $('photo-nav').hidden = viewerPhotos.length < 2;
+
+  const meta = $('photo-meta');
+  meta.replaceChildren(el('span', '', formatDate(photo.takenAt) + ' '));
+  if (photo.stage) {
+    meta.append(stageBadge(photo.stage));
+  }
+  $('photo-date').value = dateFieldValue(photo.takenAt);
+  $('photo-stage').value = photo.stage || 'sprue';
+  $('photo-note').value = photo.note || '';
+  setText('photo-form-status', '');
+}
+
+// Move to a newer (-1) or older (+1) photo. The address is updated without
+// adding to the back history, so "back" returns to the miniature.
+function showNeighbour(direction) {
+  const next = viewerIndex + direction;
+  if (next < 0 || next >= viewerPhotos.length) {
+    return;
+  }
+  viewerIndex = next;
+  history.replaceState(null, '', '#/photo/' + viewerPhotos[next].id);
+  drawPhoto();
+}
+
+handleQuickTaps($('photo-nav'), (button) => {
+  showNeighbour(button.id === 'photo-prev' ? -1 : 1);
+});
+
+// Swipe left for an older photo, right for a newer one.
+// Two-finger pinch-zoom on the photo is left to Safari.
+let swipeStart = null;
+$('photo-frame').addEventListener('touchstart', (event) => {
+  const touch = event.touches.length === 1 ? event.touches[0] : null;
+  swipeStart = touch ? { x: touch.clientX, y: touch.clientY } : null;
+}, { passive: true });
+
+$('photo-frame').addEventListener('touchend', (event) => {
+  if (!swipeStart || event.touches.length > 0) {
+    swipeStart = null;
+    return;
+  }
+  const touch = event.changedTouches[0];
+  const dx = touch.clientX - swipeStart.x;
+  const dy = touch.clientY - swipeStart.y;
+  swipeStart = null;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    showNeighbour(dx < 0 ? 1 : -1);
+  }
+}, { passive: true });
+
+$('photo-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const photo = viewerPhotos[viewerIndex];
+  if (!$('photo-date').value) {
+    return;
+  }
+  const changes = {
+    takenAt: withDate(photo.takenAt, $('photo-date').value),
+    stage: $('photo-stage').value,
+    note: $('photo-note').value.trim(),
+  };
+  await db.photos.update(photo.id, changes);
+  Object.assign(photo, changes);
+  // A new date can change the order.
+  viewerPhotos.sort((a, b) => b.takenAt - a.takenAt);
+  viewerIndex = viewerPhotos.indexOf(photo);
+  drawPhoto();
+  setText('photo-form-status', 'Saved.', 'ok');
+});
+
+$('photo-share').addEventListener('click', async () => {
+  const photo = viewerPhotos[viewerIndex];
+  const name = slugify(viewerMini ? viewerMini.name : 'photo') + '-' + dateFieldValue(photo.takenAt) + '.jpg';
+  const file = new File([photo.blob], name, { type: 'image/jpeg' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file] });
+    } else {
+      const url = URL.createObjectURL(file);
+      const link = el('a');
+      link.href = url;
+      link.download = name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      setText('photo-form-status', 'Could not share: ' + err.name + ' - ' + err.message, 'bad');
+    }
+  }
+});
+
+$('photo-delete').addEventListener('click', async () => {
+  const photo = viewerPhotos[viewerIndex];
+  if (!confirm('Delete this photo? This cannot be undone.')) {
+    return;
+  }
+  await db.photos.delete(photo.id);
+  viewerPhotos.splice(viewerIndex, 1);
+  if (!viewerPhotos.length) {
+    return goTo('#/mini/' + photo.miniatureId);
+  }
+  viewerIndex = Math.min(viewerIndex, viewerPhotos.length - 1);
+  history.replaceState(null, '', '#/photo/' + viewerPhotos[viewerIndex].id);
+  drawPhoto();
+});
+
 // ---------- Shopping list ----------
 // Paints to buy: every paint used in a colour scheme that is not owned,
 // plus paints added by hand (onList), e.g. owned paints that are running low.
@@ -1668,6 +1898,14 @@ async function refreshDiagnostics() {
   } else {
     setText('diag-estimate', 'not supported', 'bad');
   }
+
+  let photoCount = 0;
+  let photoBytes = 0;
+  await db.photos.each((photo) => {
+    photoCount++;
+    photoBytes += (photo.blob ? photo.blob.size : 0) + (photo.thumb ? photo.thumb.size : 0);
+  });
+  setText('diag-photos', photoCount ? plural(photoCount, 'photo') + ', ' + formatSize(photoBytes) : 'none yet');
 
   if (!('serviceWorker' in navigator)) {
     setText('diag-sw', 'not supported', 'bad');

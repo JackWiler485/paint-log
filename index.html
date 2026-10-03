@@ -131,6 +131,13 @@
         <a class="button secondary" id="mini-scheme-new">+ New scheme</a>
       </div>
 
+      <h3>Progress photos</h3>
+      <button id="photo-add" class="big secondary">+ Add photo</button>
+      <input id="photo-input" type="file" accept="image/*" multiple class="visually-hidden">
+      <p id="photo-status" class="status"></p>
+      <ul id="photo-list" class="list photo-list"></ul>
+      <p id="photo-empty" class="empty" hidden>No photos yet. Take one at each stage to see the progress.</p>
+
       <h3>Notes</h3>
       <p id="mini-notes-text" class="notes"></p>
 
@@ -243,6 +250,37 @@
       <button class="danger" id="paint-delete" hidden>Delete paint</button>
     </section>
 
+    <!-- One photo, full screen -->
+    <section id="screen-photo" class="screen" hidden>
+      <a class="back" id="photo-back">‹ Back</a>
+      <div id="photo-frame" class="photo-frame">
+        <img id="photo-full" alt="">
+      </div>
+      <div id="photo-nav" class="photo-nav">
+        <button id="photo-prev" class="small secondary" aria-label="Previous photo">‹</button>
+        <span id="photo-position"></span>
+        <button id="photo-next" class="small secondary" aria-label="Next photo">›</button>
+      </div>
+      <p id="photo-meta" class="photo-meta"></p>
+      <form id="photo-form" class="form">
+        <label>Date
+          <input id="photo-date" type="date" required>
+        </label>
+        <label>Stage
+          <select id="photo-stage"></select>
+        </label>
+        <label>Note
+          <input id="photo-note" type="text" autocomplete="off" placeholder="e.g. first highlight done">
+        </label>
+        <button type="submit" class="big">Save</button>
+      </form>
+      <p id="photo-form-status" class="status"></p>
+      <div class="row actions">
+        <button id="photo-share" class="secondary">Share or save</button>
+        <button id="photo-delete" class="danger">Delete photo</button>
+      </div>
+    </section>
+
     <!-- Shopping list -->
     <section id="screen-shop" class="screen" hidden>
       <h2>Shopping list</h2>
@@ -297,6 +335,9 @@
         <dt>Storage used</dt>
         <dd id="diag-estimate">…</dd>
 
+        <dt>Photos</dt>
+        <dd id="diag-photos">…</dd>
+
         <dt>Works offline (service worker)</dt>
         <dd id="diag-sw">…</dd>
       </dl>
@@ -339,6 +380,7 @@
   <script src="db.js"></script>
   <script src="units.js"></script>
   <script src="paints.js"></script>
+  <script src="photos.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
