@@ -28,6 +28,18 @@
   box-sizing: border-box;
 }
 
+/* Quick taps are just taps: no double-tap zoom (pinch zoom still works) */
+html,
+body,
+button,
+a,
+input,
+select,
+textarea,
+label {
+  touch-action: manipulation;
+}
+
 /* Anything marked hidden stays hidden, even if a style below gives it a layout */
 [hidden] {
   display: none !important;

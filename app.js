@@ -79,6 +79,7 @@ function showScreen(name) {
 }
 
 async function render() {
+  await saveQueue; // finish any saves still waiting (see saveCounts)
   const hash = location.hash || '#/';
   for (const [pattern, show] of routes) {
     const match = hash.match(pattern);
@@ -406,23 +407,33 @@ $('mini-form').addEventListener('submit', async (event) => {
 // ---------- One miniature ----------
 
 let currentMini = null;
+let currentMiniArmyName = '';
 
 async function showMini(miniId) {
   const mini = await db.miniatures.get(miniId);
   if (!mini) {
     return goTo('#/');
   }
-  currentMini = mini;
   const army = await db.armies.get(mini.armyId);
+  currentMini = mini;
+  currentMiniArmyName = army ? army.name : '';
+  drawMini();
+  showScreen('mini');
+}
+
+// Draw the miniature screen from currentMini. This is instant (no database
+// reading), so the screen keeps up with quick taps.
+function drawMini() {
+  const mini = currentMini;
   const counts = stageCountsOf(mini);
   const models = modelCountOf(mini);
   const isSquad = models > 1;
 
   $('mini-back').href = '#/army/' + mini.armyId;
-  $('mini-back').textContent = '‹ ' + (army ? army.name : 'Back');
+  $('mini-back').textContent = '‹ ' + (currentMiniArmyName || 'Back');
   $('mini-title').textContent = mini.name;
   $('mini-army-text').textContent = (isSquad ? plural(models, 'model') + ' · added ' : 'Added ') + formatDate(mini.createdAt);
-  $('mini-edit').href = '#/mini/' + miniId + '/edit';
+  $('mini-edit').href = '#/mini/' + mini.id + '/edit';
   $('mini-notes-text').textContent = mini.notes || 'No notes.';
   $('squad-summary').textContent = isSquad ? describeCounts(counts) : '';
   $('squad-summary').hidden = !isSquad;
@@ -455,7 +466,6 @@ async function showMini(miniId) {
   }
 
   renderSquadRows(counts, isSquad);
-  showScreen('mini');
 }
 
 // For squads: one row per stage with its count and buttons to move one model back or on.
@@ -488,9 +498,18 @@ function renderSquadRows(counts, isSquad) {
   });
 }
 
-async function saveCounts(counts) {
-  await db.miniatures.update(currentMini.id, squadFields(counts));
-  await showMini(currentMini.id);
+// Saves wait in a queue, one after another, so quick taps are saved in order
+// and none are lost. Other screens wait for the queue before reading.
+let saveQueue = Promise.resolve();
+
+function saveCounts(counts) {
+  const fields = squadFields(counts);
+  const id = currentMini.id;
+  Object.assign(currentMini, fields);
+  drawMini();
+  saveQueue = saveQueue
+    .then(() => db.miniatures.update(id, fields))
+    .catch((err) => alert('Could not save: ' + err.name + ' - ' + err.message));
 }
 
 function moveOne(fromKey, toKey) {
