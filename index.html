@@ -20,22 +20,105 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>Paint Log</h1>
+    <a class="title" href="#/">Paint Log</a>
+    <a class="settings-link" href="#/settings" aria-label="Settings">⚙</a>
   </header>
 
   <main>
-    <!-- Home screen -->
-    <section id="screen-home" class="screen">
-      <p class="intro">Miniature painting tracker. This is the Phase 0 skeleton: use the buttons below to check that the app works on your phone.</p>
-      <button class="big" data-go="settings">Settings / Diagnostics</button>
-      <button class="big" data-go="camera">Camera test</button>
+    <!-- Armies (home) -->
+    <section id="screen-armies" class="screen" hidden>
+      <h2>Armies</h2>
+      <ul id="army-list" class="list"></ul>
+      <p id="army-empty" class="empty" hidden>No armies yet. Tap "New army" to add your first one.</p>
+      <a class="button big" href="#/army/new">+ New army</a>
     </section>
 
-    <!-- Settings / Diagnostics screen -->
-    <section id="screen-settings" class="screen" hidden>
-      <button class="back" data-go="home">‹ Back</button>
-      <h2>Settings / Diagnostics</h2>
+    <!-- Army form (new or edit) -->
+    <section id="screen-army-form" class="screen" hidden>
+      <a class="back" id="army-form-back" href="#/">‹ Back</a>
+      <h2 id="army-form-title">New army</h2>
+      <form id="army-form" class="form">
+        <label>Name
+          <input id="army-name" type="text" required autocomplete="off" placeholder="e.g. 3rd Company">
+        </label>
+        <label>Faction
+          <input id="army-faction" type="text" autocomplete="off" placeholder="e.g. Space Marines">
+        </label>
+        <button type="submit" class="big">Save</button>
+      </form>
+    </section>
 
+    <!-- One army -->
+    <section id="screen-army" class="screen" hidden>
+      <a class="back" href="#/">‹ Armies</a>
+      <h2 id="army-title"></h2>
+      <p id="army-faction-text" class="subtitle"></p>
+      <p id="army-progress" class="progress-text"></p>
+      <ul id="mini-list" class="list"></ul>
+      <p id="mini-empty" class="empty" hidden>No miniatures yet.</p>
+      <a class="button big" id="mini-add">+ Add miniature</a>
+      <div class="row actions">
+        <a class="button secondary" id="army-edit">Edit army</a>
+        <button class="danger" id="army-delete">Delete army</button>
+      </div>
+    </section>
+
+    <!-- Miniature form (new or edit) -->
+    <section id="screen-mini-form" class="screen" hidden>
+      <a class="back" id="mini-form-back">‹ Back</a>
+      <h2 id="mini-form-title">New miniature</h2>
+      <form id="mini-form" class="form">
+        <label>Name
+          <input id="mini-name" type="text" required autocomplete="off" placeholder="e.g. Sergeant">
+        </label>
+        <label>Stage
+          <select id="mini-stage"></select>
+        </label>
+        <label>Notes
+          <textarea id="mini-notes" rows="4"></textarea>
+        </label>
+        <button type="submit" class="big">Save</button>
+      </form>
+    </section>
+
+    <!-- One miniature -->
+    <section id="screen-mini" class="screen" hidden>
+      <a class="back" id="mini-back">‹ Back</a>
+      <h2 id="mini-title"></h2>
+      <p id="mini-army-text" class="subtitle"></p>
+
+      <h3>Stage</h3>
+      <div id="stage-bar" class="stage-bar"></div>
+      <button id="stage-next" class="big">Next stage →</button>
+
+      <h3>Notes</h3>
+      <p id="mini-notes-text" class="notes"></p>
+
+      <div class="row actions">
+        <a class="button secondary" id="mini-edit">Edit</a>
+        <button class="danger" id="mini-delete">Delete</button>
+      </div>
+    </section>
+
+    <!-- Settings / Diagnostics -->
+    <section id="screen-settings" class="screen" hidden>
+      <a class="back" href="#/">‹ Armies</a>
+      <h2>Settings</h2>
+
+      <h3>Backup</h3>
+      <div class="info">
+        <p id="backup-last" class="backup-last"></p>
+        <p class="hint">Save a backup to the Files app now and then. If the phone ever clears the app's data, you can restore from it.</p>
+        <button id="backup-create" class="big">Create backup file</button>
+        <button id="backup-save" class="big" hidden>Save backup file…</button>
+        <p id="backup-status" class="status"></p>
+
+        <button id="restore-pick" class="big secondary">Restore from backup…</button>
+        <input id="restore-input" type="file" class="visually-hidden">
+        <p id="restore-status" class="status"></p>
+      </div>
+
+      <h3>Diagnostics</h3>
       <dl class="info">
         <dt>App version</dt>
         <dd id="diag-version">…</dd>
@@ -54,11 +137,13 @@
       </dl>
 
       <div id="diag-warning" class="warning" hidden></div>
+
+      <a class="button big secondary" href="#/camera">Camera test</a>
     </section>
 
-    <!-- Camera test screen -->
+    <!-- Camera test -->
     <section id="screen-camera" class="screen" hidden>
-      <button class="back" data-go="home">‹ Back</button>
+      <a class="back" href="#/settings">‹ Settings</a>
       <h2>Camera test</h2>
 
       <h3>1. Live camera</h3>
@@ -84,6 +169,9 @@
     Unofficial fan-made tool. Not affiliated with or endorsed by Games Workshop.
   </footer>
 
+  <script src="vendor/dexie.min.js"></script>
+  <script src="vendor/dexie-export-import.js"></script>
+  <script src="db.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

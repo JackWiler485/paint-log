@@ -29,7 +29,7 @@ You only need a web browser on a computer. No command line.
 
    The easiest way is to open the project folder on your computer, select all of the above, and drag them into the browser window. Dragging a folder keeps its name, so `icons` stays a folder. Chrome and Edge handle folder dragging best.
 
-   Do **not** upload the `.claude` folder. It is only for my local testing.
+   Only upload the files listed above. Other files in the project folder are not part of the app.
 5. At the bottom, click **Commit changes**. ("Commit" means "save this version".)
 6. Check the file list: you should see `icons` as a folder, not three loose `.png` files. If the PNGs landed loose, delete them and upload again, this time dragging the folder itself.
 7. Click **Settings** (top of the repository page), then **Pages** in the left menu.
@@ -53,7 +53,37 @@ When I change files, I will give you the exact list of files to upload. That lis
 1. In the repository, click **Add file → Upload files**, drag in the changed files, and click **Commit changes**. Files with the same name are replaced.
 2. Wait a minute or two for GitHub Pages to update.
 3. On the iPhone, fully close the app (swipe it away in the app switcher) and open it again. Sometimes it takes two reopenings.
-4. Check **Settings / Diagnostics → App version**. It should show the new version number.
+4. Check **Settings (⚙) → Diagnostics → App version**. It should show the new version number.
+
+---
+
+## Phase 1 update (v0.2.0): files to upload
+
+Upload these with **Add file → Upload files**:
+
+- `index.html`
+- `styles.css`
+- `app.js`
+- `db.js` (new)
+- `sw.js`
+- `README.md`
+- the whole `vendor` folder (new, holds 2 files: `dexie.min.js` and `dexie-export-import.js`)
+
+Afterwards, check that `vendor` shows as a folder in the repository, like `icons`.
+
+## Phase 1 test checklist (on the iPhone)
+
+- [ ] **Settings (⚙) → App version** shows `v0.2.0` (close and reopen the app if it still shows `v0.1.0`).
+- [ ] **New army**: create one with a name and faction.
+- [ ] **Add miniature**: add two or three to the army.
+- [ ] **Stages**: open a miniature, tap **Next stage** a few times, and tap a stage directly. The army screen shows the new stage badges.
+- [ ] **Edit**: rename a miniature and an army.
+- [ ] **Delete**: delete one miniature (it asks first).
+- [ ] **Swipe back**: try swiping from the left edge of the screen to go back. Tell me whether it works either way; the "‹ Back" links at the top always work.
+- [ ] **Survives a restart**: fully close the app and reopen it. Everything is still there.
+- [ ] **Backup**: Settings → **Create backup file** → **Save backup file…** → **Save to Files**. Open the Files app and check the file `paint-log-backup-….json` is there.
+- [ ] **Restore**: add a test miniature, then Settings → **Restore from backup…** → pick the backup file. After "Restore complete", the test miniature is gone and everything else is back.
+- [ ] **Restore with a wrong file**: pick any other file (e.g. a photo). A red message says your data was not changed.
 
 ---
 
@@ -61,7 +91,7 @@ When I change files, I will give you the exact list of files to upload. That lis
 
 Open the app **from the home screen icon**, then:
 
-- [ ] **Settings / Diagnostics → Opened from home screen icon** says **yes**.
+- [ ] **Settings → Diagnostics → Opened from home screen icon** says **yes**.
 - [ ] **Storage protected (persist)**: note what it says (yes / no).
 - [ ] **Storage used**: shows numbers in MB.
 - [ ] **Works offline**: says **yes** (if it says "not yet", close the app and open it again).

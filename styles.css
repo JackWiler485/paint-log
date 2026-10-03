@@ -28,6 +28,11 @@
   box-sizing: border-box;
 }
 
+/* Anything marked hidden stays hidden, even if a style below gives it a layout */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -45,11 +50,25 @@ body {
   background: #1f2a36;
   color: #ffffff;
   padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.topbar h1 {
-  margin: 0;
+.topbar a {
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.topbar .title {
   font-size: 22px;
+  font-weight: 700;
+}
+
+.topbar .settings-link {
+  font-size: 26px;
+  line-height: 1;
+  padding: 4px 8px;
 }
 
 main {
@@ -67,7 +86,11 @@ h3 {
   font-size: 18px;
 }
 
-button {
+button,
+.button {
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
   font: inherit;
   border: none;
   border-radius: 10px;
@@ -81,7 +104,8 @@ button:disabled {
   opacity: 0.4;
 }
 
-button.big {
+button.big,
+.button.big {
   display: block;
   width: 100%;
   padding: 16px;
@@ -89,10 +113,37 @@ button.big {
   font-size: 18px;
 }
 
-button.back {
-  background: transparent;
+.back {
+  display: inline-block;
   color: var(--accent);
+  text-decoration: none;
   padding: 4px 0;
+}
+
+.secondary {
+  background: var(--card) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.danger {
+  background: transparent;
+  color: var(--bad);
+  border: 1px solid var(--bad);
+}
+
+.actions {
+  margin-top: 24px;
+  justify-content: space-between;
+}
+
+/* Hidden but still clickable from code (needed for the iPhone file picker) */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
 }
 
 .row {
@@ -166,6 +217,143 @@ video,
 input[type="file"] {
   font: inherit;
   max-width: 100%;
+}
+
+/* ---------- Lists ---------- */
+
+.list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.list:empty {
+  display: none;
+}
+
+.list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.list-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.list-sub,
+.subtitle,
+.progress-text,
+.empty {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.subtitle {
+  margin-top: -8px;
+}
+
+.chevron {
+  color: var(--muted);
+  font-size: 22px;
+}
+
+/* ---------- Stage badges (one colour per stage) ---------- */
+
+.badge {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: #ffffff;
+}
+
+.stage-sprue { background: #8a8f96; }
+.stage-assembled { background: #9a6b3f; }
+.stage-primed { background: #3c4652; }
+.stage-painted { background: #b5462f; }
+.stage-based { background: #2e7d4f; }
+
+/* ---------- Stage bar on the miniature screen ---------- */
+
+.stage-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.stage-step {
+  padding: 10px 2px;
+  font-size: 12px;
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.stage-step.reached {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #ffffff;
+}
+
+.stage-step.current {
+  outline: 3px solid var(--text);
+  outline-offset: 1px;
+  font-weight: 700;
+}
+
+.notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Forms ---------- */
+
+.form label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+/* 16px or larger stops the iPhone zooming in when you tap a field */
+.form input,
+.form select,
+.form textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.backup-last {
+  font-weight: 600;
+  margin-top: 0;
 }
 
 .footer {
