@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Paint Log</title>
+
+  <!-- Tells the browser this is an installable app -->
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <!-- iPhone-specific settings for the home screen app -->
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Paint Log">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#1f2a36">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Paint Log</h1>
+  </header>
+
+  <main>
+    <!-- Home screen -->
+    <section id="screen-home" class="screen">
+      <p class="intro">Miniature painting tracker. This is the Phase 0 skeleton: use the buttons below to check that the app works on your phone.</p>
+      <button class="big" data-go="settings">Settings / Diagnostics</button>
+      <button class="big" data-go="camera">Camera test</button>
+    </section>
+
+    <!-- Settings / Diagnostics screen -->
+    <section id="screen-settings" class="screen" hidden>
+      <button class="back" data-go="home">‹ Back</button>
+      <h2>Settings / Diagnostics</h2>
+
+      <dl class="info">
+        <dt>App version</dt>
+        <dd id="diag-version">…</dd>
+
+        <dt>Opened from home screen icon</dt>
+        <dd id="diag-standalone">…</dd>
+
+        <dt>Storage protected (persist)</dt>
+        <dd id="diag-persist">…</dd>
+
+        <dt>Storage used</dt>
+        <dd id="diag-estimate">…</dd>
+
+        <dt>Works offline (service worker)</dt>
+        <dd id="diag-sw">…</dd>
+      </dl>
+
+      <div id="diag-warning" class="warning" hidden></div>
+    </section>
+
+    <!-- Camera test screen -->
+    <section id="screen-camera" class="screen" hidden>
+      <button class="back" data-go="home">‹ Back</button>
+      <h2>Camera test</h2>
+
+      <h3>1. Live camera</h3>
+      <video id="cam-video" autoplay playsinline muted></video>
+      <div class="row">
+        <button id="cam-start">Start camera</button>
+        <button id="cam-snap" disabled>Take photo</button>
+        <button id="cam-stop" disabled>Stop</button>
+      </div>
+      <p id="cam-status" class="status">Camera is off.</p>
+      <canvas id="cam-canvas" hidden></canvas>
+      <img id="cam-result" class="result" alt="" hidden>
+
+      <h3>2. Backup method (photo picker)</h3>
+      <p class="hint">If the live camera does not work, this is the fallback the app will use.</p>
+      <input id="file-input" type="file" accept="image/*" capture="environment">
+      <p id="file-status" class="status"></p>
+      <img id="file-result" class="result" alt="" hidden>
+    </section>
+  </main>
+
+  <footer class="footer">
+    Unofficial fan-made tool. Not affiliated with or endorsed by Games Workshop.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
