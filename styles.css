@@ -112,8 +112,20 @@ button,
   cursor: pointer;
 }
 
-button:disabled {
+button:disabled,
+button[aria-disabled="true"] {
   opacity: 0.4;
+}
+
+/* The stage area is tapped quickly: no text selection or callouts on long press */
+.stage-controls {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.squad-summary {
+  min-height: 1.45em;
 }
 
 button.big,

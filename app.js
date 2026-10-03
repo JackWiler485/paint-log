@@ -445,27 +445,42 @@ function drawMini() {
   bar.replaceChildren();
   STAGES.forEach((stage, i) => {
     const button = el('button', 'stage-step', stage.label);
+    button.dataset.setAll = stage.key;
     if (i <= current) {
       button.classList.add('reached');
     }
     if (i === current) {
       button.classList.add('current');
     }
-    button.addEventListener('click', () => setAllModels(stage.key));
     bar.append(button);
   });
 
   // Next stage: moves the least-advanced models on by one stage.
+  // When everything is based it stays in place (greyed out), so nothing
+  // below it jumps up under the finger.
   const next = STAGES[current + 1];
-  $('stage-next').hidden = !next;
-  if (next) {
+  const nextButton = $('stage-next');
+  setInactive(nextButton, !next);
+  if (!next) {
+    nextButton.textContent = isSquad ? 'All models based ✓' : 'Based ✓';
+  } else {
     const behind = counts[mini.stage];
-    $('stage-next').textContent = (isSquad && behind < models)
+    nextButton.textContent = (isSquad && behind < models)
       ? 'Move ' + behind + ' ' + stageLabel(mini.stage).toLowerCase() + ' → ' + next.label
       : 'Next stage: ' + next.label + ' →';
   }
 
   renderSquadRows(counts, isSquad);
+}
+
+// Greyed-out buttons use aria-disabled instead of disabled, so they still
+// receive taps (which the app then ignores). See handleQuickTaps.
+function setInactive(button, inactive) {
+  if (inactive) {
+    button.setAttribute('aria-disabled', 'true');
+  } else {
+    button.removeAttribute('aria-disabled');
+  }
 }
 
 // For squads: one row per stage with its count and buttons to move one model back or on.
@@ -485,18 +500,83 @@ function renderSquadRows(counts, isSquad) {
 
     const back = el('button', 'small secondary', '‹');
     back.setAttribute('aria-label', 'Move one ' + stage.label + ' model back');
-    back.disabled = count === 0 || i === 0;
-    back.addEventListener('click', () => moveOne(stage.key, STAGES[i - 1].key));
+    setInactive(back, count === 0 || i === 0);
+    if (i > 0) {
+      back.dataset.from = stage.key;
+      back.dataset.to = STAGES[i - 1].key;
+    }
 
     const on = el('button', 'small', '›');
     on.setAttribute('aria-label', 'Move one ' + stage.label + ' model on');
-    on.disabled = count === 0 || i === STAGES.length - 1;
-    on.addEventListener('click', () => moveOne(stage.key, STAGES[i + 1].key));
+    setInactive(on, count === 0 || i === STAGES.length - 1);
+    if (i < STAGES.length - 1) {
+      on.dataset.from = stage.key;
+      on.dataset.to = STAGES[i + 1].key;
+    }
 
     row.append(back, on);
     rows.append(row);
   });
 }
+
+// ---------- Quick taps without zooming ----------
+// iPhone Safari treats two quick taps as "double-tap to zoom". In an area
+// meant for quick tapping, the app handles each touch itself and tells
+// Safari to ignore it, which stops the zoom. This covers every tap in the
+// area, including greyed-out buttons and the gaps between buttons.
+// Scrolling (a moving finger) and pinch-zoom (two fingers) are left alone.
+// Mouse, keyboard and VoiceOver taps arrive as normal clicks.
+
+const TAP_MOVE_LIMIT = 10; // pixels a finger may move and still count as a tap
+const CLICK_IGNORE_MS = 600; // ignore a click this soon after a handled touch
+
+function handleQuickTaps(area, onTap) {
+  let start = null;
+  let lastTouchTime = 0;
+
+  function tapButton(target) {
+    const button = target.closest('button');
+    if (button && area.contains(button) && button.getAttribute('aria-disabled') !== 'true') {
+      onTap(button);
+    }
+  }
+
+  area.addEventListener('touchstart', (event) => {
+    const touch = event.touches.length === 1 ? event.touches[0] : null;
+    start = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }, { passive: true });
+
+  area.addEventListener('touchend', (event) => {
+    const touch = event.changedTouches[0];
+    const tapped = start && event.touches.length === 0 &&
+      Math.abs(touch.clientX - start.x) <= TAP_MOVE_LIMIT &&
+      Math.abs(touch.clientY - start.y) <= TAP_MOVE_LIMIT;
+    start = null;
+    if (!tapped) {
+      return; // a scroll or a pinch: let Safari handle it
+    }
+    event.preventDefault();
+    lastTouchTime = Date.now();
+    tapButton(event.target);
+  }, { passive: false });
+
+  area.addEventListener('click', (event) => {
+    if (Date.now() - lastTouchTime < CLICK_IGNORE_MS) {
+      return; // this tap was already handled as a touch
+    }
+    tapButton(event.target);
+  });
+}
+
+handleQuickTaps($('stage-controls'), (button) => {
+  if (button.id === 'stage-next') {
+    nextStage();
+  } else if (button.dataset.setAll) {
+    setAllModels(button.dataset.setAll);
+  } else if (button.dataset.from) {
+    moveOne(button.dataset.from, button.dataset.to);
+  }
+});
 
 // Saves wait in a queue, one after another, so quick taps are saved in order
 // and none are lost. Other screens wait for the queue before reading.
@@ -532,7 +612,7 @@ function setAllModels(stageKey) {
   saveCounts({ [stageKey]: models });
 }
 
-$('stage-next').addEventListener('click', () => {
+function nextStage() {
   const counts = { ...stageCountsOf(currentMini) };
   const from = currentMini.stage;
   const next = STAGES[stageIndex(from) + 1];
@@ -542,7 +622,7 @@ $('stage-next').addEventListener('click', () => {
   counts[next.key] = (counts[next.key] || 0) + (counts[from] || 0);
   counts[from] = 0;
   saveCounts(counts);
-});
+}
 
 $('mini-delete').addEventListener('click', async () => {
   if (!confirm('Delete "' + currentMini.name + '"? This cannot be undone.')) {
