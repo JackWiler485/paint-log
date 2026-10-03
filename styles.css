@@ -394,6 +394,230 @@ button.unit-result {
   border: 1px solid var(--border);
 }
 
+/* ---------- Top bar links ---------- */
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar .paints-link {
+  font-size: 17px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+}
+
+/* ---------- Paint swatches ---------- */
+
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.swatch.small {
+  width: 14px;
+  height: 14px;
+}
+
+.swatch.large {
+  width: 44px;
+  height: 44px;
+}
+
+/* A shine on metallic paints */
+.swatch.metallic {
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0) 45%, rgba(0, 0, 0, 0.3) 100%);
+}
+
+.swatch-empty {
+  background: transparent;
+  border: 1px dashed var(--muted);
+}
+
+.scheme-strip {
+  display: flex;
+  gap: 3px;
+  margin: 4px 0 2px;
+}
+
+/* ---------- Scheme steps ---------- */
+
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 12px 10px;
+}
+
+.step-number {
+  width: 18px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.step-note {
+  font-style: italic;
+}
+
+.step-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.step-buttons button.small {
+  width: 38px;
+  font-size: 17px;
+}
+
+.steps.compact .step-row {
+  padding: 8px 12px 8px 8px;
+}
+
+.steps .list-title {
+  font-size: 16px;
+}
+
+.empty-row {
+  padding: 12px 16px;
+  color: var(--muted);
+}
+
+button.step-text {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  font-weight: 400;
+  border-radius: 0;
+}
+
+.not-owned {
+  color: var(--bad);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* The step list is tapped quickly too (move up/down) */
+#step-list {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---------- Paint lists ---------- */
+
+.paint-row {
+  display: flex;
+  align-items: stretch;
+}
+
+button.paint-open,
+button.paint-result {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+  border-radius: 0;
+  background: var(--card);
+  color: var(--text);
+  font-weight: 400;
+}
+
+button.owned-toggle {
+  flex: none;
+  width: 56px;
+  border-radius: 0;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 24px;
+  border-left: 1px solid var(--border);
+}
+
+button.owned-toggle.owned {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.paint-list {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.paint-results {
+  margin-top: 8px;
+}
+
+.paint-filters input[type="search"],
+.paint-filters select,
+.field input[type="search"] {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.form label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 400;
+  margin-bottom: 10px;
+}
+
+.form label.checkbox input {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.chosen-paint,
+.paint-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.paint-preview .subtitle {
+  margin: 0;
+}
+
+.form input[type="color"] {
+  height: 48px;
+  padding: 4px;
+}
+
 .notes {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

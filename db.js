@@ -27,6 +27,15 @@ function defineTables(database) {
   database.version(2).stores({
     miniatures: '++id, armyId, stage, createdAt',
   }).upgrade((tx) => tx.table('miniatures').toCollection().modify(normaliseSquad));
+
+  // Version 3 (Phase 2B): shared colour schemes per army. Scheme steps belong
+  // to a scheme, and miniatures link to one with schemeId. Paints are matched
+  // to the paint list (data/paints.json) by catalogueId.
+  database.version(3).stores({
+    schemes: '++id, armyId, name',
+    schemeSteps: '++id, schemeId, paintId',
+    paints: '++id, &catalogueId, name, range',
+  });
 }
 
 const db = new Dexie(DB_NAME);
@@ -108,29 +117,45 @@ function normaliseSquad(mini) {
 }
 
 // ---------- Deleting ----------
-// Deleting a miniature also deletes everything attached to it.
+// Deleting a miniature also deletes everything attached to it (photos, spins).
+// Its colour scheme is shared with other units, so it stays.
 // It all happens in one "transaction": either everything is deleted or nothing is.
 
 async function deleteMiniatures(miniatureIds) {
-  await db.transaction('rw', db.miniatures, db.schemeSteps, db.photos, db.spins, async () => {
-    await db.schemeSteps.where('miniatureId').anyOf(miniatureIds).delete();
+  await db.transaction('rw', db.miniatures, db.photos, db.spins, async () => {
     await db.photos.where('miniatureId').anyOf(miniatureIds).delete();
     await db.spins.where('miniatureId').anyOf(miniatureIds).delete();
     await db.miniatures.bulkDelete(miniatureIds);
   });
 }
 
-// Deleting an army deletes its miniatures (and their attachments) and its army lists.
+// Deleting an army deletes its miniatures (and their attachments), its colour
+// schemes and its army lists.
 async function deleteArmy(armyId) {
   await db.transaction('rw', db.tables, async () => {
     const miniatureIds = await db.miniatures.where('armyId').equals(armyId).primaryKeys();
     await deleteMiniatures(miniatureIds);
+
+    const schemeIds = await db.schemes.where('armyId').equals(armyId).primaryKeys();
+    await db.schemeSteps.where('schemeId').anyOf(schemeIds).delete();
+    await db.schemes.bulkDelete(schemeIds);
 
     const listIds = await db.lists.where('armyId').equals(armyId).primaryKeys();
     await db.listEntries.where('listId').anyOf(listIds).delete();
     await db.lists.bulkDelete(listIds);
 
     await db.armies.delete(armyId);
+  });
+}
+
+// Deleting a scheme deletes its steps. Units using it are kept, just unlinked.
+async function deleteScheme(schemeId) {
+  await db.transaction('rw', db.schemes, db.schemeSteps, db.miniatures, async () => {
+    await db.schemeSteps.where('schemeId').equals(schemeId).delete();
+    await db.miniatures.filter((m) => m.schemeId === schemeId).modify((m) => {
+      delete m.schemeId;
+    });
+    await db.schemes.delete(schemeId);
   });
 }
 

@@ -64,6 +64,14 @@ const routes = [
   [/^#\/mini\/new\/(\d+)$/, (m) => showMiniForm(null, Number(m[1]))],
   [/^#\/mini\/(\d+)\/edit$/, (m) => showMiniForm(Number(m[1]))],
   [/^#\/mini\/(\d+)$/, (m) => showMini(Number(m[1]))],
+  [/^#\/scheme\/new\/(\d+)(?:\/for\/(\d+))?$/, (m) => showSchemeForm(null, Number(m[1]), m[2] ? Number(m[2]) : null)],
+  [/^#\/scheme\/(\d+)\/edit$/, (m) => showSchemeForm(Number(m[1]))],
+  [/^#\/scheme\/(\d+)\/step\/new$/, (m) => showStepForm(null, Number(m[1]))],
+  [/^#\/scheme\/(\d+)$/, (m) => showScheme(Number(m[1]))],
+  [/^#\/step\/(\d+)\/edit$/, (m) => showStepForm(Number(m[1]))],
+  [/^#\/paints$/, () => showPaints()],
+  [/^#\/paint\/new$/, () => showPaintForm(null)],
+  [/^#\/paint\/(\d+)$/, (m) => showPaintForm(Number(m[1]))],
   [/^#\/settings$/, () => showSettings()],
   [/^#\/camera$/, () => showScreen('camera')],
 ];
@@ -246,13 +254,36 @@ async function showArmy(armyId) {
     list.append(item);
   }
   $('mini-empty').hidden = minis.length > 0;
+
+  // Colour schemes: name, colour strip, steps and how many units use each.
+  const schemes = await db.schemes.where('armyId').equals(armyId).sortBy('name');
+  const allSteps = await db.schemeSteps.where('schemeId').anyOf(schemes.map((s) => s.id)).toArray();
+  const paints = await paintMap();
+  const schemeList = $('scheme-list');
+  schemeList.replaceChildren();
+  for (const scheme of schemes) {
+    const steps = allSteps.filter((s) => s.schemeId === scheme.id).sort((a, b) => a.order - b.order);
+    const users = minis.filter((m) => m.schemeId === scheme.id).length;
+    const link = el('a', 'list-item');
+    link.href = '#/scheme/' + scheme.id;
+    const text = el('div', 'list-text');
+    text.append(el('div', 'list-title', scheme.name));
+    text.append(schemeStrip(steps, paints));
+    text.append(el('div', 'list-sub', plural(steps.length, 'step') + ' · used by ' + plural(users, 'unit')));
+    link.append(text, el('span', 'chevron', '›'));
+    const item = el('li');
+    item.append(link);
+    schemeList.append(item);
+  }
+  $('scheme-empty').hidden = schemes.length > 0;
+  $('scheme-add').href = '#/scheme/new/' + armyId;
   showScreen('army');
 }
 
 $('army-delete').addEventListener('click', async () => {
   const army = await db.armies.get(currentArmyId);
   const count = await db.miniatures.where('armyId').equals(currentArmyId).count();
-  if (!army || !confirm('Delete "' + army.name + '" and its ' + count + ' miniatures? This cannot be undone.')) {
+  if (!army || !confirm('Delete "' + army.name + '", its ' + count + ' miniatures and its colour schemes? This cannot be undone.')) {
     return;
   }
   await deleteArmy(currentArmyId);
@@ -418,8 +449,49 @@ async function showMini(miniId) {
   currentMini = mini;
   currentMiniArmyName = army ? army.name : '';
   drawMini();
+  await drawMiniScheme();
   showScreen('mini');
 }
+
+// The miniature's colour scheme: a picker and the chosen scheme's steps.
+async function drawMiniScheme() {
+  const mini = currentMini;
+  const schemes = await db.schemes.where('armyId').equals(mini.armyId).sortBy('name');
+  const select = $('mini-scheme');
+  const none = el('option', '', schemes.length ? 'No scheme' : 'No schemes in this army yet');
+  none.value = '';
+  select.replaceChildren(none, ...schemes.map((scheme) => {
+    const option = el('option', '', scheme.name);
+    option.value = scheme.id;
+    return option;
+  }));
+  const scheme = schemes.find((s) => s.id === mini.schemeId);
+  select.value = scheme ? String(scheme.id) : '';
+
+  const list = $('mini-scheme-steps');
+  list.replaceChildren();
+  if (scheme) {
+    const steps = await stepsOfScheme(scheme.id);
+    const paints = await paintMap();
+    steps.forEach((step, i) => list.append(stepRow(step, i, paints, null)));
+    if (!steps.length) {
+      list.append(el('li', 'empty-row', 'This scheme has no steps yet.'));
+    }
+  }
+  $('mini-scheme-edit').hidden = !scheme;
+  if (scheme) {
+    $('mini-scheme-edit').href = '#/scheme/' + scheme.id;
+  }
+  $('mini-scheme-new').href = '#/scheme/new/' + mini.armyId + '/for/' + mini.id;
+}
+
+$('mini-scheme').addEventListener('change', async () => {
+  const schemeId = Number($('mini-scheme').value) || undefined;
+  currentMini.schemeId = schemeId;
+  await saveQueue;
+  await db.miniatures.update(currentMini.id, { schemeId });
+  await drawMiniScheme();
+});
 
 // Draw the miniature screen from currentMini. This is instant (no database
 // reading), so the screen keeps up with quick taps.
@@ -529,6 +601,13 @@ function renderSquadRows(counts, isSquad) {
 
 const TAP_MOVE_LIMIT = 10; // pixels a finger may move and still count as a tap
 const CLICK_IGNORE_MS = 600; // ignore a click this soon after a handled touch
+const SCROLL_SETTLE_MS = 150; // a touch this soon after scrolling just stops the scroll
+
+// Touching the screen to stop a flicked list must not tap what is under the finger.
+let lastScrollTime = 0;
+window.addEventListener('scroll', () => {
+  lastScrollTime = Date.now();
+}, { passive: true });
 
 function handleQuickTaps(area, onTap) {
   let start = null;
@@ -543,17 +622,19 @@ function handleQuickTaps(area, onTap) {
 
   area.addEventListener('touchstart', (event) => {
     const touch = event.touches.length === 1 ? event.touches[0] : null;
-    start = touch ? { x: touch.clientX, y: touch.clientY } : null;
+    const scrolling = Date.now() - lastScrollTime < SCROLL_SETTLE_MS;
+    start = touch && !scrolling ? { x: touch.clientX, y: touch.clientY, scrollY: window.scrollY } : null;
   }, { passive: true });
 
   area.addEventListener('touchend', (event) => {
     const touch = event.changedTouches[0];
     const tapped = start && event.touches.length === 0 &&
+      window.scrollY === start.scrollY &&
       Math.abs(touch.clientX - start.x) <= TAP_MOVE_LIMIT &&
       Math.abs(touch.clientY - start.y) <= TAP_MOVE_LIMIT;
     start = null;
     if (!tapped) {
-      return; // a scroll or a pinch: let Safari handle it
+      return; // a scroll, a touch that stopped a scroll, or a pinch: let Safari handle it
     }
     event.preventDefault();
     lastTouchTime = Date.now();
@@ -582,14 +663,18 @@ handleQuickTaps($('stage-controls'), (button) => {
 // and none are lost. Other screens wait for the queue before reading.
 let saveQueue = Promise.resolve();
 
+function queueSave(task) {
+  saveQueue = saveQueue
+    .then(task)
+    .catch((err) => alert('Could not save: ' + err.name + ' - ' + err.message));
+}
+
 function saveCounts(counts) {
   const fields = squadFields(counts);
   const id = currentMini.id;
   Object.assign(currentMini, fields);
   drawMini();
-  saveQueue = saveQueue
-    .then(() => db.miniatures.update(id, fields))
-    .catch((err) => alert('Could not save: ' + err.name + ' - ' + err.message));
+  queueSave(() => db.miniatures.update(id, fields));
 }
 
 function moveOne(fromKey, toKey) {
@@ -630,6 +715,542 @@ $('mini-delete').addEventListener('click', async () => {
   }
   await deleteMiniatures([currentMini.id]);
   goTo('#/army/' + currentMini.armyId);
+});
+
+// ---------- Colour schemes: shared helpers ----------
+
+async function paintMap() {
+  const paints = await db.paints.toArray();
+  return new Map(paints.map((p) => [p.id, p]));
+}
+
+async function stepsOfScheme(schemeId) {
+  const steps = await db.schemeSteps.where('schemeId').equals(schemeId).toArray();
+  return steps.sort((a, b) => a.order - b.order);
+}
+
+// One step as a list row: swatch, paint, part · technique, note, "Not owned".
+// With buttons: tapping the text edits the step, plus move up and move down
+// (handled by handleQuickTaps).
+function stepRow(step, index, paints, buttons) {
+  const paint = paints.get(step.paintId);
+  const item = el('li', 'step-row');
+  item.append(el('span', 'step-number', String(index + 1)), paintSwatch(paint));
+
+  const text = el(buttons ? 'button' : 'div', 'list-text step-text');
+  text.append(el('div', 'list-title', paint ? paintLabel(paint) : 'Paint missing'));
+  const sub = [step.partName, step.technique].filter(Boolean).join(' · ');
+  if (sub) {
+    text.append(el('div', 'list-sub', sub));
+  }
+  if (step.note) {
+    text.append(el('div', 'list-sub step-note', step.note));
+  }
+  if (paint && !paint.owned) {
+    text.append(el('div', 'not-owned', 'Not owned'));
+  }
+  item.append(text);
+
+  if (buttons) {
+    text.dataset.edit = step.id;
+    text.setAttribute('aria-label', 'Edit step ' + (index + 1));
+    const up = el('button', 'small secondary', '↑');
+    up.setAttribute('aria-label', 'Move step up');
+    up.dataset.step = step.id;
+    up.dataset.move = '-1';
+    setInactive(up, buttons.first);
+    const down = el('button', 'small secondary', '↓');
+    down.setAttribute('aria-label', 'Move step down');
+    down.dataset.step = step.id;
+    down.dataset.move = '1';
+    setInactive(down, buttons.last);
+    const group = el('div', 'step-buttons');
+    group.append(up, down);
+    item.append(group);
+  }
+  return item;
+}
+
+// A strip of small swatches, one per paint in the scheme.
+function schemeStrip(steps, paints) {
+  const strip = el('span', 'scheme-strip');
+  const seen = new Set();
+  for (const step of steps) {
+    if (seen.has(step.paintId) || seen.size >= 10) {
+      continue;
+    }
+    seen.add(step.paintId);
+    strip.append(paintSwatch(paints.get(step.paintId), 'small'));
+  }
+  return strip;
+}
+
+// ---------- One colour scheme ----------
+
+let currentScheme = null;
+let currentSteps = [];
+let currentPaints = new Map();
+
+async function showScheme(schemeId) {
+  const scheme = await db.schemes.get(schemeId);
+  if (!scheme) {
+    return goTo('#/');
+  }
+  const army = await db.armies.get(scheme.armyId);
+  const users = await db.miniatures.where('armyId').equals(scheme.armyId)
+    .filter((m) => m.schemeId === schemeId).toArray();
+  currentScheme = scheme;
+  currentSteps = await stepsOfScheme(schemeId);
+  currentPaints = await paintMap();
+
+  $('scheme-back').href = '#/army/' + scheme.armyId;
+  $('scheme-back').textContent = '‹ ' + (army ? army.name : 'Back');
+  $('scheme-title').textContent = scheme.name;
+  $('scheme-used-by').textContent = users.length
+    ? 'Used by: ' + users.map((m) => m.name).join(', ')
+    : 'Not used by any unit yet. Pick it on a miniature\'s screen.';
+  $('step-add').href = '#/scheme/' + schemeId + '/step/new';
+  $('scheme-rename').href = '#/scheme/' + schemeId + '/edit';
+  drawSteps();
+  showScreen('scheme');
+}
+
+function drawSteps() {
+  const list = $('step-list');
+  list.replaceChildren();
+  currentSteps.forEach((step, i) => {
+    list.append(stepRow(step, i, currentPaints, { first: i === 0, last: i === currentSteps.length - 1 }));
+  });
+  $('step-empty').hidden = currentSteps.length > 0;
+}
+
+handleQuickTaps($('step-list'), (button) => {
+  if (button.dataset.edit) {
+    location.hash = '#/step/' + button.dataset.edit + '/edit';
+  } else if (button.dataset.move) {
+    moveStep(Number(button.dataset.step), Number(button.dataset.move));
+  }
+});
+
+// Swap a step with its neighbour. The screen updates at once; saving is queued.
+function moveStep(stepId, direction) {
+  const i = currentSteps.findIndex((s) => s.id === stepId);
+  const j = i + direction;
+  if (i === -1 || j < 0 || j >= currentSteps.length) {
+    return;
+  }
+  [currentSteps[i], currentSteps[j]] = [currentSteps[j], currentSteps[i]];
+  currentSteps.forEach((step, index) => {
+    step.order = index;
+  });
+  drawSteps();
+  const rows = currentSteps.map((step) => ({ ...step }));
+  queueSave(() => db.schemeSteps.bulkPut(rows));
+}
+
+$('scheme-delete').addEventListener('click', async () => {
+  const scheme = currentScheme;
+  const users = await db.miniatures.filter((m) => m.schemeId === scheme.id).count();
+  const message = 'Delete the scheme "' + scheme.name + '" and its steps?' +
+    (users ? ' The ' + plural(users, 'unit') + ' using it will have no scheme (the units are kept).' : '');
+  if (!confirm(message)) {
+    return;
+  }
+  await deleteScheme(scheme.id);
+  goTo('#/army/' + scheme.armyId);
+});
+
+// ---------- Scheme name form (new or rename) ----------
+
+let schemeFormState = null;
+
+async function showSchemeForm(schemeId, armyId, forMiniId) {
+  let scheme = { name: '', armyId };
+  if (schemeId) {
+    scheme = await db.schemes.get(schemeId);
+    if (!scheme) {
+      return goTo('#/');
+    }
+  } else if (!(await db.armies.get(armyId))) {
+    return goTo('#/');
+  }
+  schemeFormState = { schemeId, armyId: scheme.armyId, forMiniId };
+  $('scheme-form-title').textContent = schemeId ? 'Rename scheme' : 'New scheme';
+  $('scheme-form-back').href = schemeId ? '#/scheme/' + schemeId
+    : (forMiniId ? '#/mini/' + forMiniId : '#/army/' + scheme.armyId);
+  $('scheme-name').value = scheme.name;
+  showScreen('scheme-form');
+}
+
+$('scheme-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = $('scheme-name').value.trim();
+  if (!name) {
+    return;
+  }
+  const { schemeId, armyId, forMiniId } = schemeFormState;
+  if (schemeId) {
+    await db.schemes.update(schemeId, { name });
+    return goTo('#/scheme/' + schemeId);
+  }
+  const id = await db.schemes.add({ armyId, name, createdAt: Date.now() });
+  if (forMiniId) {
+    await db.miniatures.update(forMiniId, { schemeId: id });
+  }
+  goTo('#/scheme/' + id);
+});
+
+// ---------- Step form (new or edit) ----------
+
+let stepForm = null;
+let stepPaints = [];
+const MAX_PAINT_RESULTS = 50;
+
+for (const technique of TECHNIQUES) {
+  const option = el('option', '', technique);
+  option.value = technique;
+  $('step-technique').append(option);
+}
+
+async function showStepForm(stepId, schemeId) {
+  let step = { partName: '', technique: 'Base', paintId: null, note: '' };
+  if (stepId) {
+    step = await db.schemeSteps.get(stepId);
+    if (!step) {
+      return goTo('#/');
+    }
+    schemeId = step.schemeId;
+  }
+  const scheme = await db.schemes.get(schemeId);
+  if (!scheme) {
+    return goTo('#/');
+  }
+  stepPaints = await db.paints.toArray();
+  stepForm = { stepId, schemeId, paintId: step.paintId, techniqueTouched: Boolean(stepId) };
+
+  // Suggest parts already used in this army's schemes.
+  const schemeIds = await db.schemes.where('armyId').equals(scheme.armyId).primaryKeys();
+  const parts = new Set((await db.schemeSteps.where('schemeId').anyOf(schemeIds).toArray())
+    .map((s) => s.partName).filter(Boolean));
+  $('part-suggestions').replaceChildren(...[...parts].sort().map((part) => {
+    const option = el('option');
+    option.value = part;
+    return option;
+  }));
+
+  $('step-form-title').textContent = (stepId ? 'Edit step' : 'New step') + ': ' + scheme.name;
+  $('step-form-back').href = '#/scheme/' + schemeId;
+  $('step-part').value = step.partName || '';
+  $('step-technique').value = step.technique || 'Base';
+  $('step-note').value = step.note || '';
+  $('paint-search').value = '';
+  $('paint-results').replaceChildren();
+  $('step-delete').hidden = !stepId;
+  drawChosenPaint();
+  drawPaintResults();
+  showScreen('step-form');
+}
+
+function drawChosenPaint() {
+  const box = $('step-paint-chosen');
+  box.replaceChildren();
+  const paint = stepPaints.find((p) => p.id === stepForm.paintId);
+  if (!paint) {
+    box.append(el('span', 'hint', 'No paint chosen yet. Search below.'));
+    return;
+  }
+  box.append(paintSwatch(paint, 'large'));
+  const text = el('div', 'list-text');
+  text.append(el('div', 'list-title', paintLabel(paint)));
+  text.append(el('div', 'list-sub', paint.owned ? 'Owned' : 'Not owned'));
+  box.append(text);
+}
+
+function drawPaintResults() {
+  const query = $('paint-search').value.trim();
+  const ownedOnly = $('paint-owned-only').checked;
+  const list = $('paint-results');
+  list.replaceChildren();
+  if (!query && !ownedOnly) {
+    $('paint-search-note').textContent = 'Type part of a paint name, or tick "Only paints I own" to list them.';
+    return [];
+  }
+  const found = filterPaints(stepPaints, query, { ownedOnly });
+  for (const paint of found.slice(0, MAX_PAINT_RESULTS)) {
+    const button = el('button', 'list-item paint-result');
+    button.type = 'button';
+    button.append(paintSwatch(paint));
+    const text = el('div', 'list-text');
+    text.append(el('div', 'list-title', paintLabel(paint)));
+    text.append(el('div', 'list-sub', paintTypeLabel(paint.type) + (paint.owned ? ' · owned' : '')));
+    button.append(text);
+    button.addEventListener('click', () => choosePaint(paint));
+    const item = el('li');
+    item.append(button);
+    list.append(item);
+  }
+  let note = found.length === 0 ? 'No paints match. Missing paints can be added on the Paints screen.' : '';
+  if (found.length > MAX_PAINT_RESULTS) {
+    note = 'Showing ' + MAX_PAINT_RESULTS + ' of ' + found.length + '. Keep typing to narrow it down.';
+  }
+  $('paint-search-note').textContent = note;
+  return found;
+}
+
+function choosePaint(paint) {
+  stepForm.paintId = paint.id;
+  if (!stepForm.techniqueTouched) {
+    $('step-technique').value = suggestedTechnique(paint);
+  }
+  $('paint-search').value = '';
+  $('paint-search').blur();
+  drawChosenPaint();
+  drawPaintResults();
+  $('step-paint-chosen').scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+$('paint-search').addEventListener('input', drawPaintResults);
+$('paint-owned-only').addEventListener('change', drawPaintResults);
+$('step-technique').addEventListener('change', () => {
+  stepForm.techniqueTouched = true;
+});
+
+// The keyboard's Search/Enter key must not save the form.
+$('paint-search').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') {
+    return;
+  }
+  event.preventDefault();
+  const found = drawPaintResults();
+  if (found.length === 1) {
+    choosePaint(found[0]);
+  } else {
+    $('paint-search').blur();
+  }
+});
+
+$('step-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!stepForm.paintId) {
+    $('paint-search-note').textContent = 'Pick a paint first.';
+    $('paint-search').focus();
+    return;
+  }
+  const fields = {
+    partName: $('step-part').value.trim(),
+    technique: $('step-technique').value,
+    paintId: stepForm.paintId,
+    note: $('step-note').value.trim(),
+  };
+  if (stepForm.stepId) {
+    await db.schemeSteps.update(stepForm.stepId, fields);
+  } else {
+    const steps = await stepsOfScheme(stepForm.schemeId);
+    const order = steps.length ? steps[steps.length - 1].order + 1 : 0;
+    await db.schemeSteps.add({ schemeId: stepForm.schemeId, order, ...fields });
+  }
+  goTo('#/scheme/' + stepForm.schemeId);
+});
+
+$('step-delete').addEventListener('click', async () => {
+  if (!confirm('Delete this step?')) {
+    return;
+  }
+  await db.schemeSteps.delete(stepForm.stepId);
+  goTo('#/scheme/' + stepForm.schemeId);
+});
+
+// ---------- Paints screen ----------
+
+let allPaints = [];
+let paintSyncError = '';
+
+async function showPaints() {
+  allPaints = await db.paints.toArray();
+  const select = $('paints-range');
+  const chosen = select.value;
+  const all = el('option', '', 'All ranges (without Air)');
+  all.value = '';
+  select.replaceChildren(all, ...rangeNames(allPaints)
+    .filter((range) => allPaints.some((p) => p.range === range))
+    .map((range) => {
+      const option = el('option', '', range);
+      option.value = range;
+      return option;
+    }));
+  select.value = chosen;
+  drawPaintList();
+  showScreen('paints');
+}
+
+function drawPaintList() {
+  const found = filterPaints(allPaints, $('paints-search').value.trim(), {
+    range: $('paints-range').value,
+    ownedOnly: $('paints-owned-only').checked,
+    showDiscontinued: $('paints-discontinued').checked,
+    hideAir: true,
+  });
+  const owned = allPaints.filter((p) => p.owned).length;
+  $('paints-count').textContent = paintSyncError ||
+    ('Showing ' + found.length + ' paints. You own ' + owned + '. Tap ○ to mark a paint as owned.');
+
+  const list = $('paint-list');
+  list.replaceChildren();
+  for (const paint of found) {
+    const item = el('li', 'paint-row');
+    const open = el('button', 'list-item paint-open');
+    open.dataset.open = paint.id;
+    open.append(paintSwatch(paint));
+    const text = el('div', 'list-text');
+    text.append(el('div', 'list-title', paint.name));
+    const details = [paint.range, paintTypeLabel(paint.type)];
+    if (paint.discontinued) {
+      details.push('discontinued');
+    }
+    if (!paint.catalogueId) {
+      details.push('added by you');
+    }
+    text.append(el('div', 'list-sub', details.filter(Boolean).join(' · ')));
+    open.append(text);
+
+    const toggle = el('button', 'owned-toggle');
+    toggle.dataset.toggle = paint.id;
+    drawOwnedToggle(toggle, paint);
+    item.append(open, toggle);
+    list.append(item);
+  }
+}
+
+function drawOwnedToggle(button, paint) {
+  button.textContent = paint.owned ? '✓' : '○';
+  button.classList.toggle('owned', Boolean(paint.owned));
+  button.setAttribute('aria-pressed', paint.owned ? 'true' : 'false');
+  button.setAttribute('aria-label', (paint.owned ? 'Owned: ' : 'Not owned: ') + paint.name);
+}
+
+handleQuickTaps($('paint-list'), (button) => {
+  if (button.dataset.toggle) {
+    const paint = allPaints.find((p) => p.id === Number(button.dataset.toggle));
+    if (!paint) {
+      return;
+    }
+    paint.owned = !paint.owned;
+    drawOwnedToggle(button, paint);
+    const owned = paint.owned;
+    queueSave(() => db.paints.update(paint.id, { owned }));
+  } else if (button.dataset.open) {
+    location.hash = '#/paint/' + button.dataset.open;
+  }
+});
+
+$('paints-search').addEventListener('input', drawPaintList);
+$('paints-range').addEventListener('change', drawPaintList);
+$('paints-owned-only').addEventListener('change', drawPaintList);
+$('paints-discontinued').addEventListener('change', drawPaintList);
+
+// ---------- One paint (edit) or a new custom paint ----------
+
+let editingPaint = null;
+
+for (const type of PAINT_TYPES) {
+  const option = el('option', '', type.label);
+  option.value = type.key;
+  $('paint-type').append(option);
+}
+
+async function showPaintForm(paintId) {
+  let paint = { name: '', range: '', type: 'opaque', hex: '#808080', owned: true, metallic: false };
+  if (paintId) {
+    paint = await db.paints.get(paintId);
+    if (!paint) {
+      return goTo('#/paints');
+    }
+  }
+  editingPaint = paint;
+  const custom = !paint.catalogueId;
+
+  $('paint-form-title').textContent = paintId ? paint.name : 'New paint';
+  for (const id of ['paint-name-label', 'paint-range-label', 'paint-type-label', 'paint-metallic-label']) {
+    $(id).hidden = !custom;
+  }
+  $('paint-name').required = custom;
+  $('paint-name').value = paint.name;
+  $('paint-range').value = paint.range || '';
+  $('paint-type').value = paint.type || 'opaque';
+  $('paint-metallic').checked = Boolean(paint.metallic);
+  $('paint-owned').checked = Boolean(paint.owned);
+  $('paint-hex').value = (HEX_PATTERN.test(paint.hex) ? paint.hex : '#808080').toLowerCase();
+
+  const allRows = await db.paints.toArray();
+  $('range-suggestions').replaceChildren(...rangeNames(allRows).map((range) => {
+    const option = el('option');
+    option.value = range;
+    return option;
+  }));
+
+  const uses = paintId ? await db.schemeSteps.where('paintId').equals(paintId).count() : 0;
+  $('paint-used-note').textContent = uses ? 'Used in ' + plural(uses, 'scheme step') + '.' : '';
+  $('paint-delete').hidden = !(custom && paintId && uses === 0);
+  drawPaintPreview();
+  showScreen('paint-form');
+}
+
+function drawPaintPreview() {
+  const paint = editingPaint;
+  const hex = $('paint-hex').value.toUpperCase();
+  const swatch = $('paint-preview-swatch');
+  swatch.style.backgroundColor = hex;
+  swatch.classList.toggle('metallic', paint.catalogueId ? Boolean(paint.metallic) : $('paint-metallic').checked);
+  const details = paint.catalogueId
+    ? [paint.range, paintTypeLabel(paint.type), paint.discontinued ? 'discontinued' : '', hex]
+    : ['Added by you', hex];
+  $('paint-preview-text').textContent = details.filter(Boolean).join(' · ');
+  $('paint-reset-hex').hidden = !(paint.catalogueId && hex !== paint.catalogueHex);
+}
+
+$('paint-hex').addEventListener('input', drawPaintPreview);
+$('paint-metallic').addEventListener('change', drawPaintPreview);
+
+$('paint-reset-hex').addEventListener('click', () => {
+  $('paint-hex').value = editingPaint.catalogueHex.toLowerCase();
+  drawPaintPreview();
+});
+
+$('paint-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const hex = $('paint-hex').value.toUpperCase();
+  const owned = $('paint-owned').checked;
+  if (editingPaint.catalogueId) {
+    await db.paints.update(editingPaint.id, { hex, owned });
+    return goTo('#/paints');
+  }
+  const name = $('paint-name').value.trim();
+  if (!name) {
+    return;
+  }
+  const fields = {
+    name,
+    range: $('paint-range').value.trim(),
+    type: $('paint-type').value,
+    metallic: $('paint-metallic').checked,
+    hex,
+    owned,
+    custom: true,
+  };
+  if (editingPaint.id) {
+    await db.paints.update(editingPaint.id, fields);
+  } else {
+    await db.paints.add(fields);
+  }
+  goTo('#/paints');
+});
+
+$('paint-delete').addEventListener('click', async () => {
+  if (!confirm('Delete the paint "' + editingPaint.name + '"?')) {
+    return;
+  }
+  await db.paints.delete(editingPaint.id);
+  goTo('#/paints');
 });
 
 // ---------- Backup ----------
@@ -735,6 +1356,7 @@ $('restore-input').addEventListener('change', async () => {
     }
     setText('restore-status', 'Restoring… keep the app open.');
     await importBackup(file);
+    await syncPaints().catch(() => {}); // add paints the backup didn't have yet
     setText('restore-status', 'Restore complete.', 'ok');
   } catch (err) {
     setText('restore-status', 'Restore failed, your data was not changed. ' + err.message, 'bad');
@@ -947,6 +1569,9 @@ requestPersistentStorage().then(() => {
 });
 
 db.open()
+  .then(() => syncPaints().catch((err) => {
+    paintSyncError = 'The paint list could not be loaded: ' + err.message;
+  }))
   .then(render)
   .catch((err) => {
     document.querySelector('main').textContent =

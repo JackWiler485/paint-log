@@ -12,11 +12,13 @@ A miniature painting tracker that runs as a web app on the iPhone. It is install
 - **Unit search**: when adding a miniature, search the army's units by name. Picking a unit fills in its name and squad size. Legends units are marked. Any other name can be typed by hand.
 - **Squads**: an entry can hold several models. The app tracks how many models are at each stage, and a squad counts as finished only when every model is.
 - **Painting stages**: move each model through *On sprue → Assembled → Primed → Painted → Based*, one at a time or the whole squad at once, with a progress summary per army.
+- **Paints**: the Warhammer Colour (formerly Citadel Colour) range with colour swatches. Search, filter by range, and tick the paints you own. Colours can be corrected, and missing paints (including other brands) can be added.
+- **Shared colour schemes**: each army has named schemes, such as "Battle armour". A scheme is an ordered list of steps (part, technique, paint and an optional note). Miniatures and squads pick a scheme, so editing it once updates every unit using it. Paints not yet owned are marked.
 - **Backup and restore**: save all data to a single file (for example in the Files app) and restore it later.
 - **Diagnostics**: a Settings screen showing whether the app runs from the home screen, whether storage is protected, how much space is used, and the app version.
 - **Camera test**: checks the live rear camera and the photo picker.
 
-Planned: colour schemes with a paint list, a shopping list of missing paints, progress photos, 360° turntable "spins" and simple army lists.
+Planned: a shopping list of missing paints, progress photos, 360° turntable "spins" and simple army lists.
 
 ---
 
@@ -45,10 +47,10 @@ Only a web browser is needed; no command line or build step.
    - Choose **Public**. GitHub Pages is free for public repositories, and the code contains no personal data.
    - Click **Create repository**.
 3. On the empty repository page, click **uploading an existing file** and drag in the app files:
-   - `index.html`, `styles.css`, `app.js`, `db.js`, `units.js`, `sw.js`, `manifest.webmanifest`, `README.md`
+   - `index.html`, `styles.css`, `app.js`, `db.js`, `units.js`, `paints.js`, `sw.js`, `manifest.webmanifest`, `README.md`
    - the `icons` folder (3 PNG files)
    - the `vendor` folder (2 JavaScript files)
-   - the `data` folder (`units.json` and its licence notice)
+   - the `data` folder (`units.json`, `paints.json` and their licence notices)
 
    Drag the folders themselves so they keep their names (Chrome and Edge handle folder dragging best). Only these files are part of the app.
 4. Click **Commit changes** ("commit" means "save this version").
@@ -91,6 +93,15 @@ Open the app **from the home screen icon**, then check:
 - [ ] Fully close and reopen the app. Everything is still there.
 - [ ] Swiping from the left edge goes back a screen. (This depends on the iOS version; the "‹ Back" links at the top always work.)
 
+**Paints and colour schemes**
+- [ ] **Paints**: search for a paint, tick **○** to mark it owned, and check **Only paints I own**.
+- [ ] Tap a paint, change its colour and save. **Reset to original colour** brings it back.
+- [ ] **+ Add paint**: add a paint that is not in the list, with a name, range or brand, and colour.
+- [ ] On an army, **+ New scheme**, then **+ Add step**: pick a part, search for a paint, and save. The technique is pre-filled from the paint's range.
+- [ ] Add a few steps, then move them with **↑ ↓** and tap a step to edit it.
+- [ ] On a miniature, pick the scheme under **Colour scheme**. Its steps appear, with unowned paints marked.
+- [ ] Delete a scheme: units that used it are kept, with no scheme.
+
 **Backup and restore**
 - [ ] **Create backup file → Save backup file… → Save to Files**. The file `paint-log-backup-….json` appears in the Files app.
 - [ ] Add a test miniature, then **Restore from backup…** and pick the backup file. After "Restore complete", the test miniature is gone and everything else is back.
@@ -109,15 +120,16 @@ Open the app **from the home screen icon**, then check:
 
 ---
 
-## Updating the unit list
+## Updating the unit and paint lists
 
-`data/units.json` is built from the BSData dataset by a script (needs Python 3 and PyYAML):
+`data/units.json` and `data/paints.json` are built by scripts:
 
 ```
 python3 tools/build-units.py
+python3 tools/build-paints.py
 ```
 
-After rebuilding, raise `CACHE_VERSION` in `sw.js` and upload `data/units.json` and `sw.js`.
+`build-units.py` needs PyYAML. After rebuilding, raise `CACHE_VERSION` in `sw.js` and upload the changed data file and `sw.js`. New paints are added to the app automatically, and colours corrected in the app are kept.
 
 ---
 
@@ -125,4 +137,6 @@ After rebuilding, raise `CACHE_VERSION` in `sw.js` and upload `data/units.json` 
 
 - Plain HTML, CSS and JavaScript, with no framework and no build step.
 - [Dexie.js](https://dexie.org) and its export/import add-on (Apache License 2.0) for the on-device database and backups, bundled in `vendor/`.
-- Unit names, squad sizes and points from [BSData/wh40k-11e-mfm](https://github.com/BSData/wh40k-11e-mfm) (MIT License). See `data/THIRD-PARTY-NOTICES.md`.
+- Unit names, squad sizes and points from [BSData/wh40k-11e-mfm](https://github.com/BSData/wh40k-11e-mfm) (MIT License).
+- Paint names and approximate colours from [Paintdex](https://github.com/s10-steve/paintdex) (MIT License), originally based on [Miniature Painter Pro's paint list](https://github.com/Arcturus5404/miniature-paints) (MIT License).
+- Full licence notices are in `data/THIRD-PARTY-NOTICES.md`.

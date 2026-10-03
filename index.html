@@ -21,7 +21,10 @@
 <body>
   <header class="topbar">
     <a class="title" href="#/">Paint Log</a>
-    <a class="settings-link" href="#/settings" aria-label="Settings">⚙</a>
+    <nav class="topnav">
+      <a class="paints-link" href="#/paints">Paints</a>
+      <a class="settings-link" href="#/settings" aria-label="Settings">⚙</a>
+    </nav>
   </header>
 
   <main>
@@ -58,6 +61,12 @@
       <ul id="mini-list" class="list"></ul>
       <p id="mini-empty" class="empty" hidden>No miniatures yet.</p>
       <a class="button big" id="mini-add">+ Add miniature</a>
+
+      <h3>Colour schemes</h3>
+      <ul id="scheme-list" class="list"></ul>
+      <p id="scheme-empty" class="empty" hidden>No colour schemes yet. A scheme is a list of paint steps that several units can share.</p>
+      <a class="button big secondary" id="scheme-add">+ New scheme</a>
+
       <div class="row actions">
         <a class="button secondary" id="army-edit">Edit army</a>
         <button class="danger" id="army-delete">Delete army</button>
@@ -109,6 +118,18 @@
         <div id="squad-rows" class="squad-rows"></div>
       </div>
 
+      <h3>Colour scheme</h3>
+      <div class="form">
+        <label>Scheme
+          <select id="mini-scheme"></select>
+        </label>
+      </div>
+      <ol id="mini-scheme-steps" class="list steps compact"></ol>
+      <div class="row">
+        <a class="button secondary" id="mini-scheme-edit">Edit scheme</a>
+        <a class="button secondary" id="mini-scheme-new">+ New scheme</a>
+      </div>
+
       <h3>Notes</h3>
       <p id="mini-notes-text" class="notes"></p>
 
@@ -116,6 +137,108 @@
         <a class="button secondary" id="mini-edit">Edit</a>
         <button class="danger" id="mini-delete">Delete</button>
       </div>
+    </section>
+
+    <!-- One colour scheme -->
+    <section id="screen-scheme" class="screen" hidden>
+      <a class="back" id="scheme-back">‹ Back</a>
+      <h2 id="scheme-title"></h2>
+      <p id="scheme-used-by" class="subtitle"></p>
+      <ol id="step-list" class="list steps"></ol>
+      <p id="step-empty" class="empty" hidden>No steps yet. Add the paints in the order you use them.</p>
+      <a class="button big" id="step-add">+ Add step</a>
+      <div class="row actions">
+        <a class="button secondary" id="scheme-rename">Rename</a>
+        <button class="danger" id="scheme-delete">Delete scheme</button>
+      </div>
+    </section>
+
+    <!-- Scheme name form (new or rename) -->
+    <section id="screen-scheme-form" class="screen" hidden>
+      <a class="back" id="scheme-form-back">‹ Back</a>
+      <h2 id="scheme-form-title">New scheme</h2>
+      <form id="scheme-form" class="form">
+        <label>Name
+          <input id="scheme-name" type="text" required autocomplete="off" placeholder="e.g. Battle armour">
+        </label>
+        <button type="submit" class="big">Save</button>
+      </form>
+    </section>
+
+    <!-- Scheme step form (new or edit) -->
+    <section id="screen-step-form" class="screen" hidden>
+      <a class="back" id="step-form-back">‹ Back</a>
+      <h2 id="step-form-title">New step</h2>
+      <form id="step-form" class="form">
+        <label>Part
+          <input id="step-part" type="text" autocomplete="off" list="part-suggestions" placeholder="e.g. Armour">
+          <datalist id="part-suggestions"></datalist>
+        </label>
+
+        <div class="field">
+          <span class="field-label">Paint</span>
+          <div id="step-paint-chosen" class="chosen-paint"></div>
+          <input id="paint-search" type="search" autocomplete="off" placeholder="Search paints, e.g. macragge">
+          <label class="checkbox"><input id="paint-owned-only" type="checkbox"> Only paints I own</label>
+          <ul id="paint-results" class="list paint-results"></ul>
+          <p id="paint-search-note" class="hint"></p>
+        </div>
+
+        <label>Technique
+          <select id="step-technique"></select>
+        </label>
+        <label>Note (optional)
+          <input id="step-note" type="text" autocomplete="off" placeholder="e.g. thinned 1:1, recesses only">
+        </label>
+        <button type="submit" class="big">Save</button>
+      </form>
+      <button class="danger" id="step-delete" hidden>Delete step</button>
+    </section>
+
+    <!-- Paints -->
+    <section id="screen-paints" class="screen" hidden>
+      <h2>Paints</h2>
+      <div class="form paint-filters">
+        <input id="paints-search" type="search" autocomplete="off" placeholder="Search paints">
+        <select id="paints-range"></select>
+        <label class="checkbox"><input id="paints-owned-only" type="checkbox"> Only paints I own</label>
+        <label class="checkbox"><input id="paints-discontinued" type="checkbox"> Show discontinued</label>
+      </div>
+      <p id="paints-count" class="hint"></p>
+      <ul id="paint-list" class="list paint-list"></ul>
+      <a class="button big secondary" href="#/paint/new">+ Add paint</a>
+      <p class="hint">Colours on screen are approximate. Tap a paint to correct its colour.</p>
+    </section>
+
+    <!-- One paint (edit) or a new custom paint -->
+    <section id="screen-paint-form" class="screen" hidden>
+      <a class="back" href="#/paints">‹ Paints</a>
+      <h2 id="paint-form-title">Paint</h2>
+      <form id="paint-form" class="form">
+        <div class="paint-preview">
+          <span id="paint-preview-swatch" class="swatch large"></span>
+          <span id="paint-preview-text" class="subtitle"></span>
+        </div>
+        <label id="paint-name-label">Name
+          <input id="paint-name" type="text" autocomplete="off" placeholder="e.g. Model Color Dark Blue">
+        </label>
+        <label id="paint-range-label">Range or brand
+          <input id="paint-range" type="text" autocomplete="off" list="range-suggestions" placeholder="e.g. Layer, or Vallejo Model Color">
+          <datalist id="range-suggestions"></datalist>
+        </label>
+        <label id="paint-type-label">Type
+          <select id="paint-type"></select>
+        </label>
+        <label>Colour
+          <input id="paint-hex" type="color" value="#808080">
+        </label>
+        <button type="button" class="secondary" id="paint-reset-hex" hidden>Reset to original colour</button>
+        <label class="checkbox" id="paint-metallic-label"><input id="paint-metallic" type="checkbox"> Metallic</label>
+        <label class="checkbox"><input id="paint-owned" type="checkbox"> I own this paint</label>
+        <button type="submit" class="big">Save</button>
+      </form>
+      <p id="paint-used-note" class="hint"></p>
+      <button class="danger" id="paint-delete" hidden>Delete paint</button>
     </section>
 
     <!-- Settings / Diagnostics -->
@@ -191,6 +314,7 @@
   <script src="vendor/dexie-export-import.js"></script>
   <script src="db.js"></script>
   <script src="units.js"></script>
+  <script src="paints.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
