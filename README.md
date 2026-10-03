@@ -14,11 +14,12 @@ A miniature painting tracker that runs as a web app on the iPhone. It is install
 - **Painting stages**: move each model through *On sprue → Assembled → Primed → Painted → Based*, one at a time or the whole squad at once, with a progress summary per army.
 - **Paints**: the Warhammer Colour (formerly Citadel Colour) range with colour swatches. Search, filter by range, and tick the paints you own. Colours can be corrected, and missing paints (including other brands) can be added.
 - **Shared colour schemes**: each army has named schemes, such as "Battle armour". A scheme is an ordered list of steps (part, technique, paint and an optional note). Miniatures and squads pick a scheme, so editing it once updates every unit using it. Paints not yet owned are marked.
+- **Shopping list**: every paint used in a colour scheme that is not owned, plus paints added by hand (for example to restock a paint that is running low). Grouped by range, filterable by army, and shareable as text to Notes or Messages. Ticking a paint off marks it as owned.
 - **Backup and restore**: save all data to a single file (for example in the Files app) and restore it later.
 - **Diagnostics**: a Settings screen showing whether the app runs from the home screen, whether storage is protected, how much space is used, and the app version.
 - **Camera test**: checks the live rear camera and the photo picker.
 
-Planned: a shopping list of missing paints, progress photos, 360° turntable "spins" and simple army lists.
+Planned: progress photos, 360° turntable "spins" and simple army lists.
 
 ---
 
@@ -101,6 +102,14 @@ Open the app **from the home screen icon**, then check:
 - [ ] Add a few steps, then move them with **↑ ↓** and tap a step to edit it.
 - [ ] On a miniature, pick the scheme under **Colour scheme**. Its steps appear, with unowned paints marked.
 - [ ] Delete a scheme: units that used it are kept, with no scheme.
+
+**Shopping list**
+- [ ] **Shop** in the top bar shows how many paints to buy. Unowned paints from colour schemes are listed by range, with the schemes that need them.
+- [ ] Tap **○** on a paint: it is ticked off and marked as owned. Tap **✓** to undo.
+- [ ] Filter the list by army.
+- [ ] **+ Add paint**: add a paint by hand, including one already owned (shown as "Restock").
+- [ ] On a paint's screen, switch **On shopping list** on and off.
+- [ ] **Share list**: the share menu opens with the list as text. Save it to Notes.
 
 **Backup and restore**
 - [ ] **Create backup file → Save backup file… → Save to Files**. The file `paint-log-backup-….json` appears in the Files app.

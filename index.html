@@ -22,7 +22,8 @@
   <header class="topbar">
     <a class="title" href="#/">Paint Log</a>
     <nav class="topnav">
-      <a class="paints-link" href="#/paints">Paints</a>
+      <a class="nav-pill" href="#/paints">Paints</a>
+      <a class="nav-pill" href="#/shop">Shop<span id="shop-count" class="count" hidden></span></a>
       <a class="settings-link" href="#/settings" aria-label="Settings">⚙</a>
     </nav>
   </header>
@@ -235,10 +236,33 @@
         <button type="button" class="secondary" id="paint-reset-hex" hidden>Reset to original colour</button>
         <label class="checkbox" id="paint-metallic-label"><input id="paint-metallic" type="checkbox"> Metallic</label>
         <label class="checkbox"><input id="paint-owned" type="checkbox"> I own this paint</label>
+        <label class="checkbox"><input id="paint-onlist" type="checkbox"> On shopping list (e.g. running low)</label>
         <button type="submit" class="big">Save</button>
       </form>
       <p id="paint-used-note" class="hint"></p>
       <button class="danger" id="paint-delete" hidden>Delete paint</button>
+    </section>
+
+    <!-- Shopping list -->
+    <section id="screen-shop" class="screen" hidden>
+      <h2>Shopping list</h2>
+      <div class="form paint-filters">
+        <select id="shop-army"></select>
+      </div>
+      <p id="shop-summary" class="hint"></p>
+      <div id="shop-list" class="shop-list"></div>
+      <p id="shop-empty" class="empty" hidden>Nothing to buy. Paints used in colour schemes that are not marked owned appear here, plus any paint added with "+ Add paint".</p>
+
+      <button id="shop-share" class="big">Share list</button>
+      <p id="shop-share-status" class="status"></p>
+      <textarea id="shop-share-text" class="share-text" rows="8" readonly hidden></textarea>
+
+      <button id="shop-add-open" class="big secondary">+ Add paint</button>
+      <div id="shop-add" class="form" hidden>
+        <input id="shop-search" type="search" autocomplete="off" placeholder="Search paints to add, e.g. lahmian">
+        <ul id="shop-results" class="list paint-results"></ul>
+        <p id="shop-search-note" class="hint"></p>
+      </div>
     </section>
 
     <!-- Settings / Diagnostics -->

@@ -402,12 +402,26 @@ button.unit-result {
   gap: 8px;
 }
 
-.topbar .paints-link {
-  font-size: 17px;
+.topbar .nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 16px;
   font-weight: 600;
   padding: 6px 10px;
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 999px;
+}
+
+/* Number of paints to buy, on the Shop link */
+.count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 13px;
+  text-align: center;
 }
 
 /* ---------- Paint swatches ---------- */
@@ -616,6 +630,42 @@ button.owned-toggle.owned {
 .form input[type="color"] {
   height: 48px;
   padding: 4px;
+}
+
+/* ---------- Shopping list ---------- */
+
+.shop-range {
+  margin: 20px 0 8px;
+}
+
+.shop-row .list-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.shop-row.bought .list-item {
+  opacity: 0.45;
+}
+
+.shop-row.bought .list-title {
+  text-decoration: line-through;
+}
+
+.shop-list {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.share-text {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
 }
 
 .notes {

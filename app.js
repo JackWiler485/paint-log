@@ -70,6 +70,7 @@ const routes = [
   [/^#\/scheme\/(\d+)$/, (m) => showScheme(Number(m[1]))],
   [/^#\/step\/(\d+)\/edit$/, (m) => showStepForm(Number(m[1]))],
   [/^#\/paints$/, () => showPaints()],
+  [/^#\/shop$/, () => showShop()],
   [/^#\/paint\/new$/, () => showPaintForm(null)],
   [/^#\/paint\/(\d+)$/, (m) => showPaintForm(Number(m[1]))],
   [/^#\/settings$/, () => showSettings()],
@@ -97,6 +98,7 @@ async function render() {
       } catch (err) {
         alert('Something went wrong: ' + err.name + ' - ' + err.message);
       }
+      updateShopCount().catch(() => {});
       return;
     }
   }
@@ -1179,6 +1181,7 @@ async function showPaintForm(paintId) {
   $('paint-type').value = paint.type || 'opaque';
   $('paint-metallic').checked = Boolean(paint.metallic);
   $('paint-owned').checked = Boolean(paint.owned);
+  $('paint-onlist').checked = Boolean(paint.onList);
   $('paint-hex').value = (HEX_PATTERN.test(paint.hex) ? paint.hex : '#808080').toLowerCase();
 
   const allRows = await db.paints.toArray();
@@ -1220,8 +1223,9 @@ $('paint-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const hex = $('paint-hex').value.toUpperCase();
   const owned = $('paint-owned').checked;
+  const onList = $('paint-onlist').checked;
   if (editingPaint.catalogueId) {
-    await db.paints.update(editingPaint.id, { hex, owned });
+    await db.paints.update(editingPaint.id, { hex, owned, onList });
     return goTo('#/paints');
   }
   const name = $('paint-name').value.trim();
@@ -1235,6 +1239,7 @@ $('paint-form').addEventListener('submit', async (event) => {
     metallic: $('paint-metallic').checked,
     hex,
     owned,
+    onList,
     custom: true,
   };
   if (editingPaint.id) {
@@ -1251,6 +1256,258 @@ $('paint-delete').addEventListener('click', async () => {
   }
   await db.paints.delete(editingPaint.id);
   goTo('#/paints');
+});
+
+// ---------- Shopping list ----------
+// Paints to buy: every paint used in a colour scheme that is not owned,
+// plus paints added by hand (onList), e.g. owned paints that are running low.
+
+// Build the list. With an army id, only that army's schemes count
+// (paints added by hand are always included).
+async function shoppingList(armyId) {
+  const [paints, armies, schemes, steps] = await Promise.all([
+    db.paints.toArray(), db.armies.toArray(), db.schemes.toArray(), db.schemeSteps.toArray(),
+  ]);
+  const armyNames = new Map(armies.map((a) => [a.id, a.name]));
+  const schemesById = new Map(schemes.map((s) => [s.id, s]));
+  const items = new Map(); // paint id -> { paint, reasons }
+
+  function itemFor(paint) {
+    if (!items.has(paint.id)) {
+      items.set(paint.id, { paint, reasons: new Set() });
+    }
+    return items.get(paint.id);
+  }
+
+  const paintsById = new Map(paints.map((p) => [p.id, p]));
+  for (const step of steps) {
+    const paint = paintsById.get(step.paintId);
+    const scheme = schemesById.get(step.schemeId);
+    if (!paint || paint.owned || !scheme || (armyId && scheme.armyId !== armyId)) {
+      continue;
+    }
+    itemFor(paint).reasons.add(scheme.name + ' · ' + (armyNames.get(scheme.armyId) || 'unknown army'));
+  }
+  for (const paint of paints) {
+    if (paint.onList) {
+      itemFor(paint).reasons.add(paint.owned ? 'Restock' : 'Added by hand');
+    }
+  }
+  return [...items.values()]
+    .map((item) => ({ paint: item.paint, reasons: [...item.reasons] }))
+    .sort((a, b) => rangeIndex(a.paint.range) - rangeIndex(b.paint.range) ||
+      (a.paint.range || '').localeCompare(b.paint.range || '') ||
+      a.paint.name.localeCompare(b.paint.name));
+}
+
+// The number on the Shop link in the top bar.
+async function updateShopCount() {
+  const count = (await shoppingList(null)).length;
+  $('shop-count').textContent = count;
+  $('shop-count').hidden = count === 0;
+}
+
+let shopItems = [];
+let shopBought = new Map(); // paint id -> what it was before ticking (for undo)
+let shopPaints = [];
+
+async function showShop() {
+  const armies = await db.armies.orderBy('createdAt').toArray();
+  const select = $('shop-army');
+  const chosen = select.value;
+  const all = el('option', '', 'All armies');
+  all.value = '';
+  select.replaceChildren(all, ...armies.map((army) => {
+    const option = el('option', '', army.name);
+    option.value = army.id;
+    return option;
+  }));
+  select.value = armies.some((a) => String(a.id) === chosen) ? chosen : '';
+
+  shopBought = new Map();
+  shopItems = await shoppingList(Number(select.value) || null);
+  shopPaints = await db.paints.toArray();
+  $('shop-add').hidden = true;
+  $('shop-add-open').hidden = false;
+  $('shop-share-status').textContent = '';
+  $('shop-share-text').hidden = true;
+  drawShop();
+  showScreen('shop');
+}
+
+$('shop-army').addEventListener('change', async () => {
+  shopItems = await shoppingList(Number($('shop-army').value) || null);
+  drawShop();
+});
+
+function drawShop() {
+  const box = $('shop-list');
+  box.replaceChildren();
+  let list = null;
+  let range = null;
+  for (const { paint, reasons } of shopItems) {
+    if (paint.range !== range || !list) {
+      range = paint.range;
+      box.append(el('h3', 'shop-range', range || 'Other'));
+      list = el('ul', 'list');
+      box.append(list);
+    }
+    const bought = shopBought.has(paint.id);
+    const item = el('li', 'paint-row shop-row' + (bought ? ' bought' : ''));
+    const text = el('div', 'list-item');
+    text.append(paintSwatch(paint));
+    const words = el('div', 'list-text');
+    words.append(el('div', 'list-title', paint.name));
+    words.append(el('div', 'list-sub', reasons.join(', ')));
+    text.append(words);
+
+    const toggle = el('button', 'owned-toggle' + (bought ? ' owned' : ''), bought ? '✓' : '○');
+    toggle.dataset.toggle = paint.id;
+    toggle.setAttribute('aria-pressed', bought ? 'true' : 'false');
+    toggle.setAttribute('aria-label', (bought ? 'Bought: ' : 'Mark as bought: ') + paint.name);
+    item.append(text, toggle);
+    list.append(item);
+  }
+  const left = shopItems.length - shopBought.size;
+  $('shop-empty').hidden = shopItems.length > 0;
+  $('shop-summary').textContent = shopItems.length
+    ? left + ' to buy' + (shopBought.size ? ', ' + shopBought.size + ' ticked off' : '') + '. Tap ○ when you buy a paint; tap ✓ to undo.'
+    : '';
+  $('shop-share').hidden = left === 0;
+}
+
+// Tick a paint off (it becomes owned and leaves the hand-added list), or undo.
+handleQuickTaps($('shop-list'), (button) => {
+  const id = Number(button.dataset.toggle);
+  const item = shopItems.find((i) => i.paint.id === id);
+  if (!item) {
+    return;
+  }
+  const paint = item.paint;
+  let changes;
+  if (shopBought.has(id)) {
+    changes = shopBought.get(id); // undo: put back what it was
+    shopBought.delete(id);
+  } else {
+    shopBought.set(id, { owned: Boolean(paint.owned), onList: Boolean(paint.onList) });
+    changes = { owned: true, onList: false };
+  }
+  Object.assign(paint, changes);
+  drawShop();
+  queueSave(() => db.paints.update(id, changes));
+  queueSave(updateShopCount);
+});
+
+// ---------- Sharing the list ----------
+
+function shoppingListText() {
+  const lines = ['Paint shopping list'];
+  let range = null;
+  for (const { paint } of shopItems) {
+    if (shopBought.has(paint.id)) {
+      continue;
+    }
+    if (paint.range !== range) {
+      range = paint.range;
+      lines.push(range || 'Other');
+    }
+    lines.push('- ' + paint.name);
+  }
+  return lines.join('\n');
+}
+
+$('shop-share').addEventListener('click', async () => {
+  const text = shoppingListText();
+  $('shop-share-text').hidden = true;
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: 'Paint shopping list', text });
+      setText('shop-share-status', '');
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      setText('shop-share-status', 'List copied. Paste it into Notes or a message.', 'ok');
+      return;
+    }
+    throw new Error('Sharing is not available here.');
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      return; // the share sheet was closed
+    }
+    // Last resort: show the text so it can be selected and copied by hand.
+    $('shop-share-text').value = text;
+    $('shop-share-text').hidden = false;
+    setText('shop-share-status', 'Could not share (' + err.message + '). Select and copy the text below.', 'bad');
+  }
+});
+
+// ---------- Adding paints by hand ----------
+
+$('shop-add-open').addEventListener('click', () => {
+  $('shop-add').hidden = false;
+  $('shop-add-open').hidden = true;
+  $('shop-search').value = '';
+  drawShopResults();
+  $('shop-search').focus();
+});
+
+function drawShopResults() {
+  const query = $('shop-search').value.trim();
+  const list = $('shop-results');
+  list.replaceChildren();
+  if (!query) {
+    $('shop-search-note').textContent = 'Type part of a paint name. Owned paints can be added too, to restock them.';
+    return [];
+  }
+  const onList = new Set(shopItems.map((i) => i.paint.id));
+  const found = filterPaints(shopPaints, query, {}).filter((p) => !onList.has(p.id));
+  for (const paint of found.slice(0, MAX_PAINT_RESULTS)) {
+    const button = el('button', 'list-item paint-result');
+    button.type = 'button';
+    button.append(paintSwatch(paint));
+    const text = el('div', 'list-text');
+    text.append(el('div', 'list-title', paintLabel(paint)));
+    text.append(el('div', 'list-sub', paint.owned ? 'Owned (add to restock)' : 'Not owned'));
+    button.append(text);
+    button.addEventListener('click', () => addToShoppingList(paint));
+    const item = el('li');
+    item.append(button);
+    list.append(item);
+  }
+  let note = found.length === 0 ? 'No paints match, or they are already on the list.' : '';
+  if (found.length > MAX_PAINT_RESULTS) {
+    note = 'Showing ' + MAX_PAINT_RESULTS + ' of ' + found.length + '. Keep typing to narrow it down.';
+  }
+  $('shop-search-note').textContent = note;
+  return found;
+}
+
+async function addToShoppingList(paint) {
+  await saveQueue;
+  await db.paints.update(paint.id, { onList: true });
+  paint.onList = true;
+  shopItems = await shoppingList(Number($('shop-army').value) || null);
+  $('shop-search').value = '';
+  $('shop-search').blur();
+  $('shop-add').hidden = true;
+  $('shop-add-open').hidden = false;
+  drawShop();
+  updateShopCount();
+}
+
+$('shop-search').addEventListener('input', drawShopResults);
+$('shop-search').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') {
+    return;
+  }
+  event.preventDefault();
+  const found = drawShopResults();
+  if (found.length === 1) {
+    addToShoppingList(found[0]);
+  } else {
+    $('shop-search').blur();
+  }
 });
 
 // ---------- Backup ----------
