@@ -1,106 +1,109 @@
 # Paint Log
 
-A personal miniature painting tracker that runs as a web app on an iPhone.
+A miniature painting tracker that runs as a web app on the iPhone. It is installed from Safari to the home screen and works offline, with all data stored on the phone.
 
 **Unofficial fan-made tool. Not affiliated with or endorsed by Games Workshop.**
 
 ---
 
-## Putting the app online (GitHub Pages, web interface only)
+## Features
 
-You only need a web browser on a computer. No command line.
+- **Armies and miniatures**: create, edit and delete armies (name and faction) and the miniatures in them.
+- **Painting stages**: move each miniature through *On sprue → Assembled → Primed → Painted → Based*, with a progress summary per army.
+- **Backup and restore**: save all data to a single file (for example in the Files app) and restore it later.
+- **Diagnostics**: a Settings screen showing whether the app runs from the home screen, whether storage is protected, how much space is used, and the app version.
+- **Camera test**: checks the live rear camera and the photo picker.
 
-### First time
+Planned: colour schemes with a paint list, a shopping list of missing paints, progress photos, 360° turntable "spins" and simple army lists.
 
-1. Sign in at <https://github.com>. If you don't have an account, create one.
-2. Click the **+** at the top right, then **New repository**.
-   - Repository name: `paint-log` (any name works, but it becomes part of the web address).
-   - Choose **Public**. GitHub Pages is free for public repositories, and the code holds no personal data.
-   - Leave the other options alone. Click **Create repository**.
-3. On the new, empty repository page, click the link **uploading an existing file**.
-4. Upload these files and the folder:
-   - `index.html`
-   - `styles.css`
-   - `app.js`
-   - `manifest.webmanifest`
-   - `sw.js`
-   - `README.md`
-   - the whole `icons` folder (it holds 3 picture files)
+---
 
-   The easiest way is to open the project folder on your computer, select all of the above, and drag them into the browser window. Dragging a folder keeps its name, so `icons` stays a folder. Chrome and Edge handle folder dragging best.
+## Installing on the iPhone
 
-   Only upload the files listed above. Other files in the project folder are not part of the app.
-5. At the bottom, click **Commit changes**. ("Commit" means "save this version".)
-6. Check the file list: you should see `icons` as a folder, not three loose `.png` files. If the PNGs landed loose, delete them and upload again, this time dragging the folder itself.
-7. Click **Settings** (top of the repository page), then **Pages** in the left menu.
-   - Under **Build and deployment**, set **Source** to **Deploy from a branch**.
-   - Set **Branch** to `main` and the folder to `/ (root)`. Click **Save**.
-8. Wait one or two minutes, then refresh that Pages screen. It shows your address, like
+1. Open the app's web address in **Safari** (other browsers on iPhone cannot install web apps).
+2. Tap the **Share** button (square with an arrow), then **Add to Home Screen**, then **Add**.
+3. From then on, **always open the app from the home screen icon**.
+
+## Data and backups
+
+- All data stays on the phone. There is no account and no cloud sync.
+- Safari and the home screen app keep **separate** data. Data entered in a Safari tab is not visible in the home screen app, and Safari may delete it after 7 days without use. Data in the home screen app is exempt from that clean-up.
+- iOS can still clear app data if the phone runs very low on storage. Save a backup regularly: **Settings (⚙) → Create backup file → Save backup file… → Save to Files**. Settings shows the date of the last backup and a reminder when it is more than 14 days old.
+- **Restore from backup…** replaces all data in the app with the contents of the backup. The whole file is checked first; if it is damaged or not a Paint Log backup, nothing is changed.
+
+---
+
+## Hosting a copy on GitHub Pages
+
+Only a web browser is needed; no command line or build step.
+
+1. Sign in at <https://github.com> (or create an account).
+2. Click **+** at the top right, then **New repository**.
+   - Name it, for example, `paint-log`. The name becomes part of the web address.
+   - Choose **Public**. GitHub Pages is free for public repositories, and the code contains no personal data.
+   - Click **Create repository**.
+3. On the empty repository page, click **uploading an existing file** and drag in the app files:
+   - `index.html`, `styles.css`, `app.js`, `db.js`, `sw.js`, `manifest.webmanifest`, `README.md`
+   - the `icons` folder (3 PNG files)
+   - the `vendor` folder (2 JavaScript files)
+
+   Drag the folders themselves so they keep their names (Chrome and Edge handle folder dragging best). Only these files are part of the app.
+4. Click **Commit changes** ("commit" means "save this version").
+5. Check the file list: `icons` and `vendor` should appear as folders, not as loose files.
+6. Open **Settings → Pages**. Under **Build and deployment**, set **Source** to **Deploy from a branch**, **Branch** to `main` and the folder to `/ (root)`, then click **Save**.
+7. After a minute or two, the Pages screen shows the address, for example
    `https://YOUR-USERNAME.github.io/paint-log/`
 
-### Installing on the iPhone
+### Updating a hosted copy
 
-1. Open the address in **Safari** (not Chrome) on the iPhone.
-2. Tap the **Share** button (square with an arrow), then **Add to Home Screen**, then **Add**.
-3. From now on, **always open the app from the home screen icon**.
-   - Safari and the home screen app keep separate data. Data in the home screen app is protected from Safari's 7-day clean-up; data in Safari is not.
-   - Do not enter anything in the Safari version.
-
-### Updating the app later
-
-When I change files, I will give you the exact list of files to upload. That list will **always include `sw.js`**, because it holds the version number. If `sw.js` doesn't change, the phone doesn't know there is an update.
-
-1. In the repository, click **Add file → Upload files**, drag in the changed files, and click **Commit changes**. Files with the same name are replaced.
-2. Wait a minute or two for GitHub Pages to update.
-3. On the iPhone, fully close the app (swipe it away in the app switcher) and open it again. Sometimes it takes two reopenings.
-4. Check **Settings (⚙) → Diagnostics → App version**. It should show the new version number.
+1. In the repository, click **Add file → Upload files**, drag in the changed files and click **Commit changes**. Files with the same name are replaced.
+2. Every update must include a new version of `sw.js`, with a higher `CACHE_VERSION` number. Without it, installed copies of the app keep using the old files.
+3. Wait a minute or two for GitHub Pages to publish the change.
+4. On the iPhone, fully close the app (swipe it away in the app switcher) and open it again. It can take two reopenings before the new version appears.
+5. Check **Settings (⚙) → Diagnostics → App version** shows the new version.
 
 ---
 
-## Phase 1 update (v0.2.0): files to upload
+## Testing checklist (on the iPhone)
 
-Upload these with **Add file → Upload files**:
+Open the app **from the home screen icon**, then check:
 
-- `index.html`
-- `styles.css`
-- `app.js`
-- `db.js` (new)
-- `sw.js`
-- `README.md`
-- the whole `vendor` folder (new, holds 2 files: `dexie.min.js` and `dexie-export-import.js`)
-
-Afterwards, check that `vendor` shows as a folder in the repository, like `icons`.
-
-## Phase 1 test checklist (on the iPhone)
-
-- [ ] **Settings (⚙) → App version** shows `v0.2.0` (close and reopen the app if it still shows `v0.1.0`).
-- [ ] **New army**: create one with a name and faction.
-- [ ] **Add miniature**: add two or three to the army.
-- [ ] **Stages**: open a miniature, tap **Next stage** a few times, and tap a stage directly. The army screen shows the new stage badges.
-- [ ] **Edit**: rename a miniature and an army.
-- [ ] **Delete**: delete one miniature (it asks first).
-- [ ] **Swipe back**: try swiping from the left edge of the screen to go back. Tell me whether it works either way; the "‹ Back" links at the top always work.
-- [ ] **Survives a restart**: fully close the app and reopen it. Everything is still there.
-- [ ] **Backup**: Settings → **Create backup file** → **Save backup file…** → **Save to Files**. Open the Files app and check the file `paint-log-backup-….json` is there.
-- [ ] **Restore**: add a test miniature, then Settings → **Restore from backup…** → pick the backup file. After "Restore complete", the test miniature is gone and everything else is back.
-- [ ] **Restore with a wrong file**: pick any other file (e.g. a photo). A red message says your data was not changed.
-
----
-
-## Phase 0 test checklist (on the iPhone)
-
-Open the app **from the home screen icon**, then:
-
+**Setup and diagnostics**
 - [ ] **Settings → Diagnostics → Opened from home screen icon** says **yes**.
-- [ ] **Storage protected (persist)**: note what it says (yes / no).
-- [ ] **Storage used**: shows numbers in MB.
-- [ ] **Works offline**: says **yes** (if it says "not yet", close the app and open it again).
-- [ ] **App version** shows `v0.1.0`.
-- [ ] **Camera test → Start camera**: allow camera access. The live view from the rear camera appears.
-- [ ] **Take photo**: a still picture appears below, with its size in pixels.
-- [ ] **Backup method**: tap the file button, take or choose a photo, and check that it appears.
-- [ ] **Offline**: turn on Airplane Mode, fully close the app, open it from the icon. It should still load.
+- [ ] **Storage protected (persist)** shows yes or no.
+- [ ] **Storage used** shows a size.
+- [ ] **Works offline** says **yes** (if it says "not yet", close and reopen the app).
+- [ ] **App version** shows the expected version.
+- [ ] **Offline**: with Airplane Mode on, fully close the app and open it from the icon. It still loads.
 
-If something fails, write down the exact text shown on screen (especially any red error text) and send it to me.
+**Armies and miniatures**
+- [ ] Create an army with a name and faction.
+- [ ] Add two or three miniatures to it.
+- [ ] Open a miniature, tap **Next stage** a few times, and tap a stage directly. The army screen shows the new stage badges.
+- [ ] Rename a miniature and an army.
+- [ ] Delete a miniature (a confirmation appears first).
+- [ ] Fully close and reopen the app. Everything is still there.
+- [ ] Swiping from the left edge goes back a screen. (This depends on the iOS version; the "‹ Back" links at the top always work.)
 
-Note: iOS may ask for camera permission again each time you open the app. That is normal for home screen web apps.
+**Backup and restore**
+- [ ] **Create backup file → Save backup file… → Save to Files**. The file `paint-log-backup-….json` appears in the Files app.
+- [ ] Add a test miniature, then **Restore from backup…** and pick the backup file. After "Restore complete", the test miniature is gone and everything else is back.
+- [ ] **Restore from backup…** with any other file (e.g. a photo) shows a red message saying the data was not changed.
+
+**Camera**
+- [ ] **Camera test → Start camera**: after allowing access, the live rear camera view appears.
+- [ ] **Take photo**: a still picture appears with its size in pixels.
+- [ ] **Backup method**: taking or choosing a photo with the file button shows it on screen.
+
+### Troubleshooting
+
+- Errors are shown on screen in red, with the exact error text. Note that text when reporting a problem.
+- iOS may ask for camera permission again each time the app is opened. This is normal for home screen web apps.
+- If an update does not appear, close and reopen the app once more.
+
+---
+
+## Built with
+
+- Plain HTML, CSS and JavaScript, with no framework and no build step.
+- [Dexie.js](https://dexie.org) and its export/import add-on (Apache License 2.0) for the on-device database and backups, bundled in `vendor/`.
