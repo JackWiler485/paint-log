@@ -3,7 +3,7 @@
 // IMPORTANT: change CACHE_VERSION every time you upload new versions of
 // any file. That tells the phone to download the new files.
 // The version also shows on the Settings screen (app.js reads it from here).
-const CACHE_VERSION = 'v0.2.0';
+const CACHE_VERSION = 'v0.3.0';
 const CACHE_NAME = 'paint-log-' + CACHE_VERSION;
 
 // Every file the app needs. Paths are relative so GitHub Pages works.
@@ -13,6 +13,8 @@ const APP_FILES = [
   './styles.css',
   './app.js',
   './db.js',
+  './units.js',
+  './data/units.json',
   './vendor/dexie.min.js',
   './vendor/dexie-export-import.js',
   './manifest.webmanifest',

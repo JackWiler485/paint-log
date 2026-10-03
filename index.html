@@ -42,8 +42,9 @@
           <input id="army-name" type="text" required autocomplete="off" placeholder="e.g. 3rd Company">
         </label>
         <label>Faction
-          <input id="army-faction" type="text" autocomplete="off" placeholder="e.g. Space Marines">
+          <select id="army-faction"></select>
         </label>
+        <p id="army-faction-note" class="hint" hidden></p>
         <button type="submit" class="big">Save</button>
       </form>
     </section>
@@ -68,10 +69,22 @@
       <a class="back" id="mini-form-back">‹ Back</a>
       <h2 id="mini-form-title">New miniature</h2>
       <form id="mini-form" class="form">
+        <div id="unit-search-box" hidden>
+          <label>Find a unit
+            <input id="unit-search" type="search" autocomplete="off" placeholder="Type part of a name, e.g. intercessor">
+          </label>
+          <ul id="unit-results" class="list unit-results"></ul>
+          <p id="unit-search-note" class="hint"></p>
+        </div>
+        <p id="unit-search-off" class="hint" hidden></p>
+
         <label>Name
-          <input id="mini-name" type="text" required autocomplete="off" placeholder="e.g. Sergeant">
+          <input id="mini-name" type="text" required autocomplete="off" placeholder="e.g. Intercessor Squad">
         </label>
-        <label>Stage
+        <label>Number of models
+          <input id="mini-models" type="number" min="1" max="200" step="1" inputmode="numeric" required>
+        </label>
+        <label id="mini-stage-label">All models start at
           <select id="mini-stage"></select>
         </label>
         <label>Notes
@@ -88,8 +101,10 @@
       <p id="mini-army-text" class="subtitle"></p>
 
       <h3>Stage</h3>
+      <p id="squad-summary" class="progress-text"></p>
       <div id="stage-bar" class="stage-bar"></div>
       <button id="stage-next" class="big">Next stage →</button>
+      <div id="squad-rows" class="squad-rows"></div>
 
       <h3>Notes</h3>
       <p id="mini-notes-text" class="notes"></p>
@@ -172,6 +187,7 @@
   <script src="vendor/dexie.min.js"></script>
   <script src="vendor/dexie-export-import.js"></script>
   <script src="db.js"></script>
+  <script src="units.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

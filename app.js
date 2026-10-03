@@ -105,13 +105,14 @@ async function showArmies() {
 
   for (const army of armies) {
     const minis = await db.miniatures.where('armyId').equals(army.id).toArray();
-    const done = minis.filter((m) => m.stage === 'based').length;
+    const models = minis.reduce((sum, m) => sum + modelCountOf(m), 0);
+    const done = minis.reduce((sum, m) => sum + (stageCountsOf(m).based || 0), 0);
 
     const link = el('a', 'list-item');
     link.href = '#/army/' + army.id;
     const text = el('div', 'list-text');
     text.append(el('div', 'list-title', army.name));
-    text.append(el('div', 'list-sub', [army.faction, minis.length + ' miniatures', done + ' finished'].filter(Boolean).join(' · ')));
+    text.append(el('div', 'list-sub', [army.faction, plural(models, 'model'), done + ' finished'].filter(Boolean).join(' · ')));
     link.append(text, el('span', 'chevron', '›'));
 
     const item = el('li');
@@ -123,38 +124,75 @@ async function showArmies() {
   showScreen('armies');
 }
 
+function plural(count, word) {
+  return count + ' ' + word + (count === 1 ? '' : 's');
+}
+
+// "2 on sprue · 3 primed"
+function describeCounts(counts) {
+  return STAGES
+    .filter((stage) => counts[stage.key] > 0)
+    .map((stage) => counts[stage.key] + ' ' + stage.label.toLowerCase())
+    .join(' · ');
+}
+
 // ---------- Army form ----------
 
-let editingArmyId = null;
+let editingArmy = null;
 
 async function showArmyForm(armyId) {
-  editingArmyId = armyId;
-  let army = { name: '', faction: '' };
+  let army = { name: '', faction: '', factionId: '' };
   if (armyId) {
     army = await db.armies.get(armyId);
     if (!army) {
       return goTo('#/');
     }
   }
+  editingArmy = army;
   $('army-form-title').textContent = armyId ? 'Edit army' : 'New army';
   $('army-form-back').href = armyId ? '#/army/' + armyId : '#/';
   $('army-name').value = army.name;
-  $('army-faction').value = army.faction || '';
+
+  // Fill the faction list from the unit catalogue.
+  const select = $('army-faction');
+  const none = el('option', '', 'Other / not listed');
+  none.value = '';
+  select.replaceChildren(none);
+  let note = '';
+  try {
+    for (const choice of await factionChoices()) {
+      const option = el('option', '', choice.name);
+      option.value = choice.id;
+      select.append(option);
+    }
+  } catch (err) {
+    note = 'The faction list could not be loaded: ' + err.message;
+  }
+  select.value = army.factionId || '';
+  if (!note && army.faction && !army.factionId) {
+    note = 'Previously typed: "' + army.faction + '". Pick the matching faction to search its units when adding miniatures.';
+  }
+  $('army-faction-note').textContent = note;
+  $('army-faction-note').hidden = !note;
   showScreen('army-form');
 }
 
 $('army-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const name = $('army-name').value.trim();
-  const faction = $('army-faction').value.trim();
   if (!name) {
     return;
   }
-  let id = editingArmyId;
+  const select = $('army-faction');
+  const factionId = select.value;
+  // With no faction picked, keep any faction typed in an older version.
+  const faction = factionId ? select.options[select.selectedIndex].text : (editingArmy.factionId ? '' : editingArmy.faction || '');
+
+  let id = editingArmy.id;
   if (id) {
-    await db.armies.update(id, { name, faction });
+    await db.armies.update(id, { name, faction, factionId });
   } else {
-    id = await db.armies.add({ name, faction, createdAt: Date.now() });
+    id = await db.armies.add({ name, faction, factionId, createdAt: Date.now() });
   }
   goTo('#/army/' + id);
 });
@@ -177,12 +215,15 @@ async function showArmy(armyId) {
 
   const minis = await db.miniatures.where('armyId').equals(armyId).sortBy('createdAt');
 
-  // Progress summary, e.g. "2 on sprue · 3 primed · 1 based"
-  const counts = STAGES
-    .map((stage) => ({ label: stage.label, count: minis.filter((m) => m.stage === stage.key).length }))
-    .filter((c) => c.count > 0)
-    .map((c) => c.count + ' ' + c.label.toLowerCase());
-  $('army-progress').textContent = counts.join(' · ');
+  // Progress summary over all models, e.g. "12 models: 2 on sprue · 10 primed"
+  const totals = {};
+  for (const mini of minis) {
+    for (const [stage, count] of Object.entries(stageCountsOf(mini))) {
+      totals[stage] = (totals[stage] || 0) + count;
+    }
+  }
+  const modelTotal = Object.values(totals).reduce((sum, n) => sum + n, 0);
+  $('army-progress').textContent = modelTotal ? plural(modelTotal, 'model') + ': ' + describeCounts(totals) : '';
 
   const list = $('mini-list');
   list.replaceChildren();
@@ -191,6 +232,12 @@ async function showArmy(armyId) {
     link.href = '#/mini/' + mini.id;
     const text = el('div', 'list-text');
     text.append(el('div', 'list-title', mini.name));
+    const models = modelCountOf(mini);
+    if (models > 1) {
+      const counts = stageCountsOf(mini);
+      const mixed = Object.keys(counts).length > 1;
+      text.append(el('div', 'list-sub', plural(models, 'model') + (mixed ? ' · ' + describeCounts(counts) : '')));
+    }
     link.append(text, stageBadge(mini.stage), el('span', 'chevron', '›'));
 
     const item = el('li');
@@ -213,8 +260,12 @@ $('army-delete').addEventListener('click', async () => {
 
 // ---------- Miniature form ----------
 
-let editingMiniId = null;
+let editingMini = null;
 let formArmyId = null;
+let formUnits = [];
+let pickedUnitName = null;
+
+const MAX_RESULTS = 50;
 
 // Fill the stage drop-down once.
 for (const stage of STAGES) {
@@ -224,39 +275,130 @@ for (const stage of STAGES) {
 }
 
 async function showMiniForm(miniId, armyId) {
-  editingMiniId = miniId;
-  let mini = { name: '', stage: 'sprue', notes: '', armyId };
+  let mini = { name: '', stage: 'sprue', notes: '', armyId, models: 1 };
   if (miniId) {
     mini = await db.miniatures.get(miniId);
     if (!mini) {
       return goTo('#/');
     }
   }
-  formArmyId = mini.armyId;
-  if (!(await db.armies.get(formArmyId))) {
+  const army = await db.armies.get(mini.armyId);
+  if (!army) {
     return goTo('#/');
   }
+  editingMini = miniId ? mini : null;
+  formArmyId = mini.armyId;
+  pickedUnitName = mini.unitName || null;
+
   $('mini-form-title').textContent = miniId ? 'Edit miniature' : 'New miniature';
   $('mini-form-back').href = miniId ? '#/mini/' + miniId : '#/army/' + formArmyId;
   $('mini-name').value = mini.name;
+  $('mini-models').value = modelCountOf(mini);
   $('mini-stage').value = mini.stage;
   $('mini-notes').value = mini.notes || '';
+
+  // The stage is only asked for new entries; after that it is set on the miniature screen.
+  $('mini-stage-label').hidden = Boolean(miniId);
+
+  // Unit search, only when adding to an army with a faction from the list.
+  $('unit-search').value = '';
+  $('unit-results').replaceChildren();
+  formUnits = [];
+  let offNote = '';
+  if (!miniId) {
+    if (army.factionId) {
+      try {
+        formUnits = await unitsForFaction(army.factionId);
+      } catch (err) {
+        offNote = 'The unit list could not be loaded: ' + err.message;
+      }
+    } else {
+      offNote = 'Tip: pick a faction for this army (Edit army) to search its units here.';
+    }
+  }
+  $('unit-search-box').hidden = formUnits.length === 0;
+  $('unit-search-note').textContent = 'Search ' + formUnits.length + ' ' + (army.faction || '') + ' units, or type a name below.';
+  $('unit-search-off').textContent = offNote;
+  $('unit-search-off').hidden = !offNote;
   showScreen('mini-form');
+}
+
+$('unit-search').addEventListener('input', () => {
+  const query = $('unit-search').value.trim();
+  const list = $('unit-results');
+  list.replaceChildren();
+  if (!query) {
+    $('unit-search-note').textContent = 'Search ' + formUnits.length + ' units, or type a name below.';
+    return;
+  }
+  const found = searchUnits(formUnits, query);
+  for (const unit of found.slice(0, MAX_RESULTS)) {
+    const button = el('button', 'list-item unit-result');
+    button.type = 'button';
+    const text = el('div', 'list-text');
+    text.append(el('div', 'list-title', unit.name));
+    text.append(el('div', 'list-sub', [describeSizes(unit.sizes), unit.group].filter(Boolean).join(' · ')));
+    button.append(text);
+    if (unit.legends) {
+      button.append(el('span', 'badge legends', 'Legends'));
+    }
+    button.addEventListener('click', () => pickUnit(unit));
+    const item = el('li');
+    item.append(button);
+    list.append(item);
+  }
+  let note = found.length === 0 ? 'No units match. You can type the name yourself below.' : '';
+  if (found.length > MAX_RESULTS) {
+    note = 'Showing ' + MAX_RESULTS + ' of ' + found.length + '. Keep typing to narrow it down.';
+  }
+  $('unit-search-note').textContent = note;
+});
+
+// The keyboard's Search/Enter key must not save the form.
+// If exactly one unit matches, pick it; otherwise just close the keyboard.
+$('unit-search').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') {
+    return;
+  }
+  event.preventDefault();
+  const query = $('unit-search').value.trim();
+  const found = query ? searchUnits(formUnits, query) : [];
+  if (found.length === 1) {
+    pickUnit(found[0]);
+  } else {
+    $('unit-search').blur();
+  }
+});
+
+function pickUnit(unit) {
+  pickedUnitName = unit.name;
+  $('mini-name').value = unit.name;
+  $('mini-models').value = (unit.sizes && unit.sizes[0]) || 1;
+  $('unit-search').value = '';
+  $('unit-results').replaceChildren();
+  $('unit-search-note').textContent = 'Picked "' + unit.name + '" (' + describeSizes(unit.sizes) + '). Change the number of models if needed.';
+  $('unit-search').blur();
+  $('mini-name').scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 
 $('mini-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const name = $('mini-name').value.trim();
-  const stage = $('mini-stage').value;
+  const models = Math.round(Number($('mini-models').value));
   const notes = $('mini-notes').value.trim();
-  if (!name) {
+  if (!name || !(models >= 1)) {
     return;
   }
-  if (editingMiniId) {
-    await db.miniatures.update(editingMiniId, { name, stage, notes });
-    goTo('#/mini/' + editingMiniId);
+  // Remember the catalogue unit only while the name still matches it.
+  const unitName = pickedUnitName === name ? pickedUnitName : null;
+
+  if (editingMini) {
+    const counts = resizeCounts(stageCountsOf(editingMini), models);
+    await db.miniatures.update(editingMini.id, { name, notes, unitName, ...squadFields(counts) });
+    goTo('#/mini/' + editingMini.id);
   } else {
-    await db.miniatures.add({ armyId: formArmyId, name, stage, notes, createdAt: Date.now() });
+    const counts = { [$('mini-stage').value]: models };
+    await db.miniatures.add({ armyId: formArmyId, name, notes, unitName, ...squadFields(counts), createdAt: Date.now() });
     goTo('#/army/' + formArmyId);
   }
 });
@@ -272,15 +414,21 @@ async function showMini(miniId) {
   }
   currentMini = mini;
   const army = await db.armies.get(mini.armyId);
+  const counts = stageCountsOf(mini);
+  const models = modelCountOf(mini);
+  const isSquad = models > 1;
 
   $('mini-back').href = '#/army/' + mini.armyId;
   $('mini-back').textContent = '‹ ' + (army ? army.name : 'Back');
   $('mini-title').textContent = mini.name;
-  $('mini-army-text').textContent = 'Added ' + formatDate(mini.createdAt);
+  $('mini-army-text').textContent = (isSquad ? plural(models, 'model') + ' · added ' : 'Added ') + formatDate(mini.createdAt);
   $('mini-edit').href = '#/mini/' + miniId + '/edit';
   $('mini-notes-text').textContent = mini.notes || 'No notes.';
+  $('squad-summary').textContent = isSquad ? describeCounts(counts) : '';
+  $('squad-summary').hidden = !isSquad;
 
-  // Stage bar: one button per stage. Stages already reached are filled in.
+  // Stage bar: one button per stage, filled up to the squad's overall stage.
+  // Tapping a stage sets every model to that stage.
   const current = stageIndex(mini.stage);
   const bar = $('stage-bar');
   bar.replaceChildren();
@@ -292,28 +440,89 @@ async function showMini(miniId) {
     if (i === current) {
       button.classList.add('current');
     }
-    button.addEventListener('click', () => setStage(stage.key));
+    button.addEventListener('click', () => setAllModels(stage.key));
     bar.append(button);
   });
 
+  // Next stage: moves the least-advanced models on by one stage.
   const next = STAGES[current + 1];
   $('stage-next').hidden = !next;
   if (next) {
-    $('stage-next').textContent = 'Next stage: ' + next.label + ' →';
+    const behind = counts[mini.stage];
+    $('stage-next').textContent = (isSquad && behind < models)
+      ? 'Move ' + behind + ' ' + stageLabel(mini.stage).toLowerCase() + ' → ' + next.label
+      : 'Next stage: ' + next.label + ' →';
   }
+
+  renderSquadRows(counts, isSquad);
   showScreen('mini');
 }
 
-async function setStage(stageKey) {
-  await db.miniatures.update(currentMini.id, { stage: stageKey });
+// For squads: one row per stage with its count and buttons to move one model back or on.
+function renderSquadRows(counts, isSquad) {
+  const rows = $('squad-rows');
+  rows.replaceChildren();
+  rows.hidden = !isSquad;
+  if (!isSquad) {
+    return;
+  }
+  rows.append(el('p', 'hint', 'Move single models between stages:'));
+  STAGES.forEach((stage, i) => {
+    const count = counts[stage.key] || 0;
+    const row = el('div', 'squad-row');
+    row.append(el('span', 'squad-label', stage.label));
+    row.append(el('span', 'squad-count', String(count)));
+
+    const back = el('button', 'small secondary', '‹');
+    back.setAttribute('aria-label', 'Move one ' + stage.label + ' model back');
+    back.disabled = count === 0 || i === 0;
+    back.addEventListener('click', () => moveOne(stage.key, STAGES[i - 1].key));
+
+    const on = el('button', 'small', '›');
+    on.setAttribute('aria-label', 'Move one ' + stage.label + ' model on');
+    on.disabled = count === 0 || i === STAGES.length - 1;
+    on.addEventListener('click', () => moveOne(stage.key, STAGES[i + 1].key));
+
+    row.append(back, on);
+    rows.append(row);
+  });
+}
+
+async function saveCounts(counts) {
+  await db.miniatures.update(currentMini.id, squadFields(counts));
   await showMini(currentMini.id);
 }
 
-$('stage-next').addEventListener('click', () => {
-  const next = STAGES[stageIndex(currentMini.stage) + 1];
-  if (next) {
-    setStage(next.key);
+function moveOne(fromKey, toKey) {
+  const counts = { ...stageCountsOf(currentMini) };
+  if (!(counts[fromKey] > 0)) {
+    return;
   }
+  counts[fromKey] -= 1;
+  counts[toKey] = (counts[toKey] || 0) + 1;
+  saveCounts(counts);
+}
+
+function setAllModels(stageKey) {
+  const counts = stageCountsOf(currentMini);
+  const models = modelCountOf(currentMini);
+  const mixed = Object.keys(counts).length > 1;
+  if (mixed && !confirm('Set all ' + models + ' models to ' + stageLabel(stageKey) + '?')) {
+    return;
+  }
+  saveCounts({ [stageKey]: models });
+}
+
+$('stage-next').addEventListener('click', () => {
+  const counts = { ...stageCountsOf(currentMini) };
+  const from = currentMini.stage;
+  const next = STAGES[stageIndex(from) + 1];
+  if (!next) {
+    return;
+  }
+  counts[next.key] = (counts[next.key] || 0) + (counts[from] || 0);
+  counts[from] = 0;
+  saveCounts(counts);
 });
 
 $('mini-delete').addEventListener('click', async () => {

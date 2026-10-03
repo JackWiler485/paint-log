@@ -21,6 +21,12 @@ function defineTables(database) {
     lists: '++id, armyId',
     listEntries: '++id, listId',
   });
+
+  // Version 2 (Phase 2): miniatures become squads with a model count and
+  // a count of models per stage. Existing entries become squads of 1.
+  database.version(2).stores({
+    miniatures: '++id, armyId, stage, createdAt',
+  }).upgrade((tx) => tx.table('miniatures').toCollection().modify(normaliseSquad));
 }
 
 const db = new Dexie(DB_NAME);
@@ -42,6 +48,63 @@ function stageIndex(key) {
 function stageLabel(key) {
   const stage = STAGES[stageIndex(key)];
   return stage ? stage.label : key;
+}
+
+// ---------- Squads ----------
+// Every miniature entry is a squad of one or more models.
+// stageCounts says how many models are at each stage, e.g. { sprue: 2, primed: 3 }.
+
+function stageCountsOf(mini) {
+  if (mini.stageCounts) {
+    return mini.stageCounts;
+  }
+  // Entries saved before squads existed (or from an old backup).
+  return { [mini.stage || 'sprue']: mini.models || 1 };
+}
+
+function modelCountOf(mini) {
+  return Object.values(stageCountsOf(mini)).reduce((sum, n) => sum + n, 0);
+}
+
+// The fields to save for a squad: the counts (without zeros), the total, and
+// the overall stage, which is the stage of the least-advanced model.
+function squadFields(counts) {
+  const clean = {};
+  for (const stage of STAGES) {
+    if (counts[stage.key] > 0) {
+      clean[stage.key] = counts[stage.key];
+    }
+  }
+  const first = STAGES.find((stage) => clean[stage.key] > 0);
+  return {
+    stageCounts: clean,
+    models: Object.values(clean).reduce((sum, n) => sum + n, 0),
+    stage: first ? first.key : 'sprue',
+  };
+}
+
+// Change the squad size. New models start on the sprue; when shrinking,
+// models are removed from the least-advanced stages first.
+function resizeCounts(counts, newTotal) {
+  const result = { ...counts };
+  let diff = newTotal - Object.values(result).reduce((sum, n) => sum + n, 0);
+  if (diff > 0) {
+    result.sprue = (result.sprue || 0) + diff;
+  }
+  for (const stage of STAGES) {
+    if (diff >= 0) {
+      break;
+    }
+    const remove = Math.min(result[stage.key] || 0, -diff);
+    result[stage.key] = (result[stage.key] || 0) - remove;
+    diff += remove;
+  }
+  return result;
+}
+
+// Give an old-style miniature the squad fields (used by the upgrade and after a restore).
+function normaliseSquad(mini) {
+  Object.assign(mini, squadFields(stageCountsOf(mini)));
 }
 
 // ---------- Deleting ----------
@@ -106,6 +169,9 @@ async function importBackup(file) {
     acceptMissingTables: true,
     clearTablesBeforeImport: true,
   });
+
+  // A backup from an older version may hold old-style miniatures.
+  await db.miniatures.toCollection().modify(normaliseSquad);
 }
 
 async function checkRowCounts(database, info) {
