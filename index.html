@@ -138,6 +138,11 @@
       <ul id="photo-list" class="list photo-list"></ul>
       <p id="photo-empty" class="empty" hidden>No photos yet. Take one at each stage to see the progress.</p>
 
+      <h3>360° spins</h3>
+      <a id="spin-new" class="button big secondary">+ New spin</a>
+      <ul id="spin-list" class="list photo-list"></ul>
+      <p id="spin-empty" class="empty" hidden>No spins yet. A spin is a set of pictures taken while the model turns, so you can turn it with a finger.</p>
+
       <h3>Notes</h3>
       <p id="mini-notes-text" class="notes"></p>
 
@@ -281,6 +286,106 @@
       </div>
     </section>
 
+    <!-- Taking a 360° spin -->
+    <section id="screen-spin-capture" class="screen" hidden>
+      <a class="back" id="spin-capture-back">‹ Back</a>
+      <h2>New 360° spin</h2>
+
+      <div id="spin-live">
+        <div class="spin-camera">
+          <video id="spin-video" autoplay playsinline muted></video>
+          <span class="spin-guide"></span>
+          <span id="spin-counter" class="spin-counter" hidden></span>
+          <span id="spin-big" class="spin-big" hidden></span>
+          <span id="spin-flash" class="spin-flash"></span>
+        </div>
+
+        <div id="spin-controls" class="spin-controls">
+          <button id="spin-go" class="big"></button>
+          <button id="spin-extra" class="big secondary" hidden></button>
+        </div>
+        <p id="spin-status" class="status"></p>
+        <p id="spin-turn-hint" class="hint"></p>
+        <fieldset id="spin-options" class="form spin-options">
+          <label>Mode
+            <select id="spin-mode">
+              <option value="auto">Auto: a picture every few seconds</option>
+              <option value="tap">Tap: one picture per tap</option>
+            </select>
+          </label>
+          <label id="spin-interval-label">Picture every
+            <select id="spin-interval">
+              <option value="1000">1 second</option>
+              <option value="1500">1.5 seconds</option>
+              <option value="2000">2 seconds</option>
+            </select>
+          </label>
+          <label>Pictures per turn
+            <select id="spin-target">
+              <option value="24">24</option>
+              <option value="36">36</option>
+            </select>
+          </label>
+        </fieldset>
+      </div>
+
+      <div id="spin-review" hidden>
+        <div id="spin-review-stage" class="spin-stage">
+          <canvas id="spin-review-canvas"></canvas>
+        </div>
+        <p class="hint center">Drag sideways to turn the model.</p>
+        <div class="row center">
+          <button id="spin-review-play" class="secondary">▶ Spin</button>
+        </div>
+        <p id="spin-review-status" class="status"></p>
+
+        <label class="field">
+          <span id="spin-trim-text" class="field-label"></span>
+          <input id="spin-trim" type="range" min="3" step="1">
+        </label>
+        <p class="hint">Turned past the start? Move the slider until the last picture matches the first one.</p>
+        <div class="spin-compare">
+          <figure><img id="spin-first" alt="First picture"><figcaption>First</figcaption></figure>
+          <figure><img id="spin-last" alt="Last picture"><figcaption>Last</figcaption></figure>
+        </div>
+
+        <button id="spin-save" class="big">Save spin</button>
+        <button id="spin-retake" class="big secondary">Retake</button>
+      </div>
+    </section>
+
+    <!-- One 360° spin -->
+    <section id="screen-spin" class="screen" hidden>
+      <a class="back" id="spin-back">‹ Back</a>
+      <div id="spin-view-stage" class="spin-stage">
+        <canvas id="spin-view-canvas"></canvas>
+        <span id="spin-view-loading" class="spin-loading">Loading…</span>
+      </div>
+      <p class="hint center">Drag sideways to turn the model.</p>
+      <div class="row center">
+        <button id="spin-play" class="secondary">▶ Spin</button>
+        <label class="checkbox"><input id="spin-reverse" type="checkbox"> Reverse</label>
+      </div>
+      <p id="spin-meta" class="photo-meta"></p>
+      <form id="spin-form" class="form">
+        <label>Date
+          <input id="spin-date" type="date" required>
+        </label>
+        <label>Stage
+          <select id="spin-stage"></select>
+        </label>
+        <label>Note
+          <input id="spin-note" type="text" autocomplete="off" placeholder="e.g. finished, before varnish">
+        </label>
+        <button type="submit" class="big">Save</button>
+      </form>
+      <p id="spin-form-status" class="status"></p>
+      <div class="row actions">
+        <button id="spin-to-photo" class="secondary">Save this picture as a photo</button>
+        <button id="spin-delete" class="danger">Delete spin</button>
+      </div>
+    </section>
+
     <!-- Shopping list -->
     <section id="screen-shop" class="screen" hidden>
       <h2>Shopping list</h2>
@@ -338,6 +443,9 @@
         <dt>Photos</dt>
         <dd id="diag-photos">…</dd>
 
+        <dt>360° spins</dt>
+        <dd id="diag-spins">…</dd>
+
         <dt>Works offline (service worker)</dt>
         <dd id="diag-sw">…</dd>
       </dl>
@@ -381,6 +489,7 @@
   <script src="units.js"></script>
   <script src="paints.js"></script>
   <script src="photos.js"></script>
+  <script src="spins.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

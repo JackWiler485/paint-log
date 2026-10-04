@@ -72,6 +72,8 @@ const routes = [
   [/^#\/paints$/, () => showPaints()],
   [/^#\/shop$/, () => showShop()],
   [/^#\/photo\/(\d+)$/, (m) => showPhoto(Number(m[1]))],
+  [/^#\/spin\/new\/(\d+)$/, (m) => showSpinCapture(Number(m[1]))],
+  [/^#\/spin\/(\d+)$/, (m) => showSpin(Number(m[1]))],
   [/^#\/paint\/new$/, () => showPaintForm(null)],
   [/^#\/paint\/(\d+)$/, (m) => showPaintForm(Number(m[1]))],
   [/^#\/settings$/, () => showSettings()],
@@ -85,6 +87,12 @@ function showScreen(name) {
   window.scrollTo(0, 0);
   if (name !== 'camera') {
     stopCamera();
+  }
+  if (name !== 'spin-capture') {
+    leaveSpinCapture();
+  }
+  if (name !== 'spin') {
+    viewPlayer.clear(); // frees the memory the spin's pictures use
   }
 }
 
@@ -474,6 +482,7 @@ async function showMini(miniId) {
   await drawMiniScheme();
   setText('photo-status', '');
   await drawMiniPhotos();
+  await drawMiniSpins();
   showScreen('mini');
 }
 
@@ -1488,6 +1497,587 @@ $('photo-delete').addEventListener('click', async () => {
   drawPhoto();
 });
 
+// ---------- 360° spins on the miniature screen ----------
+
+async function drawMiniSpins() {
+  const spins = await db.spins.where('miniatureId').equals(currentMini.id).toArray();
+  spins.sort((a, b) => b.takenAt - a.takenAt);
+  const url = newUrlGroup('mini-spins');
+  const list = $('spin-list');
+  list.replaceChildren();
+  for (const spin of spins) {
+    const link = el('a', 'list-item photo-row');
+    link.href = '#/spin/' + spin.id;
+    const img = el('img', 'thumb');
+    img.src = url(spin.thumb || spin.frames[0]);
+    img.alt = 'Spin from ' + formatDate(spin.takenAt);
+    const text = el('div', 'list-text');
+    text.append(el('div', 'list-title', formatDate(spin.takenAt)));
+    text.append(el('div', 'list-sub', plural(spin.frames.length, 'picture') + (spin.note ? ' · ' + spin.note : '')));
+    if (spin.stage) {
+      text.append(stageBadge(spin.stage));
+    }
+    link.append(img, text, el('span', 'chevron', '›'));
+    const item = el('li');
+    item.append(link);
+    list.append(item);
+  }
+  $('spin-empty').hidden = spins.length > 0;
+  $('spin-new').href = '#/spin/new/' + currentMini.id;
+}
+
+// ---------- Taking a 360° spin ----------
+// The live camera shows on screen. In Auto mode the app takes a picture
+// every 1-2 seconds while the model turns; in Tap mode, one per tap.
+// Pictures stay in memory until "Save spin", so "Retake" costs nothing.
+
+const spinVideo = $('spin-video');
+const reviewPlayer = createSpinPlayer($('spin-review-stage'), $('spin-review-canvas'), $('spin-review-play'));
+const SPIN_SETTINGS_KEY = 'paint-log-spin-settings';
+const SPIN_TAP_PAUSE_MS = 400; // a tap this soon after the main button changed is ignored
+
+let spinMini = null;
+let spinStream = null;
+// off, starting, ready, countdown, capturing, finishing, review or saving
+let spinState = 'off';
+let spinFrames = [];
+let spinGrabs = Promise.resolve(); // pictures are taken one after another
+let spinTimer = null;
+let spinWakeLock = null;
+let spinFrameUrls = [];
+let spinGoChangedAt = 0;
+let spinSettings = { mode: 'auto', interval: 1000, target: 36 };
+
+function loadSpinSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SPIN_SETTINGS_KEY));
+    if (saved) {
+      spinSettings = { ...spinSettings, ...saved };
+    }
+  } catch (err) {
+    // No saved choices: use the defaults.
+  }
+  $('spin-mode').value = spinSettings.mode;
+  $('spin-interval').value = String(spinSettings.interval);
+  $('spin-target').value = String(spinSettings.target);
+}
+
+function saveSpinSettings() {
+  spinSettings = {
+    mode: $('spin-mode').value,
+    interval: Number($('spin-interval').value),
+    target: Number($('spin-target').value),
+  };
+  try {
+    localStorage.setItem(SPIN_SETTINGS_KEY, JSON.stringify(spinSettings));
+  } catch (err) {
+    // Not saved: the choices are just used this time.
+  }
+  drawSpinControls();
+}
+
+$('spin-mode').addEventListener('change', saveSpinSettings);
+$('spin-interval').addEventListener('change', saveSpinSettings);
+$('spin-target').addEventListener('change', saveSpinSettings);
+
+async function showSpinCapture(miniId) {
+  const mini = await db.miniatures.get(miniId);
+  if (!mini) {
+    return goTo('#/');
+  }
+  spinMini = mini;
+  $('spin-capture-back').href = '#/mini/' + mini.id;
+  $('spin-capture-back').textContent = '‹ ' + mini.name;
+  loadSpinSettings();
+  leaveSpinCapture();
+  setText('spin-status', '');
+  showScreen('spin-capture');
+  startSpinCamera();
+}
+
+async function startSpinCamera() {
+  if (spinStream || spinState !== 'off') {
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setText('spin-status', 'The live camera is not available here.', 'bad');
+    return drawSpinControls();
+  }
+  spinState = 'starting';
+  drawSpinControls();
+  setText('spin-status', 'Starting the camera…');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false,
+    });
+    // Left the screen (or the app) while the camera was starting?
+    if (spinState !== 'starting' || document.hidden || $('screen-spin-capture').hidden) {
+      stream.getTracks().forEach((track) => track.stop());
+      if (spinState === 'starting') {
+        spinState = 'off';
+        setText('spin-status', '');
+        drawSpinControls();
+      }
+      return;
+    }
+    spinStream = stream;
+    spinVideo.srcObject = stream;
+    await spinVideo.play();
+    spinState = 'ready';
+    setText('spin-status', '');
+  } catch (err) {
+    setText('spin-status', 'Camera failed: ' + err.name + ' - ' + err.message, 'bad');
+    stopSpinCamera();
+    spinState = 'off';
+  }
+  drawSpinControls();
+}
+
+function stopSpinCamera() {
+  if (spinStream) {
+    spinStream.getTracks().forEach((track) => track.stop());
+    spinStream = null;
+  }
+  spinVideo.srcObject = null;
+  releaseSpinWakeLock();
+}
+
+// Leaving the screen: stop everything and forget unsaved pictures.
+function leaveSpinCapture() {
+  clearTimeout(spinTimer);
+  spinState = 'off';
+  stopSpinCamera();
+  freeFrameCanvas();
+  spinFrames = [];
+  reviewPlayer.clear();
+  newUrlGroup('spin-review');
+  spinFrameUrls = [];
+}
+
+// The app went into the background.
+function pauseSpinCapture() {
+  if (spinState === 'countdown' || spinState === 'capturing') {
+    finishSpinCapture();
+  } else if (spinState === 'starting' || spinState === 'ready') {
+    spinState = 'off';
+    stopSpinCamera();
+    drawSpinControls();
+  }
+}
+
+// Keep the screen from switching off while pictures are taken (where the
+// phone allows it; nothing happens otherwise).
+async function requestSpinWakeLock() {
+  try {
+    if (navigator.wakeLock) {
+      spinWakeLock = await navigator.wakeLock.request('screen');
+    }
+  } catch (err) {
+    spinWakeLock = null;
+  }
+}
+
+function releaseSpinWakeLock() {
+  if (spinWakeLock) {
+    spinWakeLock.release().catch(() => {});
+    spinWakeLock = null;
+  }
+}
+
+function drawSpinControls() {
+  const state = spinState;
+  const auto = spinSettings.mode === 'auto';
+  const reviewing = state === 'review' || state === 'saving';
+  const taking = state === 'capturing' || state === 'finishing';
+  $('spin-live').hidden = reviewing;
+  $('spin-review').hidden = !reviewing;
+  $('spin-options').disabled = !['off', 'starting', 'ready'].includes(state);
+  $('spin-interval-label').hidden = !auto;
+
+  const target = spinSettings.target;
+  const degrees = Math.round(360 / target);
+  $('spin-turn-hint').textContent = auto
+    ? 'Turn the model slowly, once around in about ' + Math.round(target * spinSettings.interval / 1000) + ' seconds. It stops by itself after ' + target + ' pictures.'
+    : 'Turn the model a little (about ' + degrees + '°) between taps, ' + target + ' times in all.';
+
+  let goText = 'Start camera';
+  let extraText = '';
+  if (state === 'starting') {
+    goText = 'Starting camera…';
+  } else if (state === 'ready') {
+    goText = auto ? 'Start spin' : 'Snap first picture';
+  } else if (state === 'countdown') {
+    goText = 'Cancel';
+  } else if (taking) {
+    goText = auto ? 'Stop' : 'Snap';
+    extraText = auto ? 'Snap now' : 'Done';
+  }
+  const go = $('spin-go');
+  if (go.textContent !== goText) {
+    spinGoChangedAt = Date.now();
+  }
+  go.textContent = goText;
+  setInactive(go, state === 'starting' || state === 'finishing');
+  const extra = $('spin-extra');
+  extra.textContent = extraText;
+  extra.hidden = !extraText;
+  setInactive(extra, state === 'finishing');
+
+  $('spin-counter').hidden = !taking;
+  $('spin-counter').textContent = spinFrames.length + ' / ' + target;
+  if (state !== 'countdown') {
+    $('spin-big').hidden = true;
+  }
+  setInactive($('spin-save'), state === 'saving');
+  setInactive($('spin-retake'), state === 'saving');
+}
+
+handleQuickTaps($('spin-controls'), (button) => {
+  const auto = spinSettings.mode === 'auto';
+  if (button.id === 'spin-extra') {
+    if (spinState === 'capturing') {
+      if (auto) {
+        snapSpinFrame();
+      } else {
+        finishSpinCapture();
+      }
+    }
+    return;
+  }
+  // The main button. A double tap must not start and then stop at once.
+  if (Date.now() - spinGoChangedAt < SPIN_TAP_PAUSE_MS) {
+    return;
+  }
+  if (spinState === 'off') {
+    startSpinCamera();
+  } else if (spinState === 'ready') {
+    spinFrames = [];
+    requestSpinWakeLock();
+    if (auto) {
+      startSpinCountdown();
+    } else {
+      spinState = 'capturing';
+      snapSpinFrame();
+      drawSpinControls();
+    }
+  } else if (spinState === 'countdown') {
+    clearTimeout(spinTimer);
+    releaseSpinWakeLock();
+    spinState = 'ready';
+    drawSpinControls();
+  } else if (spinState === 'capturing') {
+    if (auto) {
+      finishSpinCapture();
+    } else {
+      snapSpinFrame();
+    }
+  }
+});
+
+// 3, 2, 1, then a picture every few seconds.
+function startSpinCountdown() {
+  spinState = 'countdown';
+  drawSpinControls();
+  let count = 3;
+  const tick = () => {
+    if (spinState !== 'countdown') {
+      return;
+    }
+    if (count === 0) {
+      $('spin-big').hidden = true;
+      spinState = 'capturing';
+      drawSpinControls();
+      autoSnap();
+      return;
+    }
+    $('spin-big').textContent = String(count);
+    $('spin-big').hidden = false;
+    count--;
+    spinTimer = setTimeout(tick, 1000);
+  };
+  tick();
+}
+
+// The next picture is timed from the start of this one. If saving a
+// picture is slow, the next one waits for it (they never pile up).
+function autoSnap() {
+  if (spinState !== 'capturing') {
+    return;
+  }
+  const started = Date.now();
+  snapSpinFrame().then(() => {
+    if (spinState === 'capturing') {
+      spinTimer = setTimeout(autoSnap, Math.max(0, spinSettings.interval - (Date.now() - started)));
+    }
+  });
+}
+
+function snapSpinFrame() {
+  const flash = $('spin-flash');
+  flash.classList.remove('flash');
+  void flash.offsetWidth; // restarts the flash animation
+  flash.classList.add('flash');
+  spinGrabs = spinGrabs
+    .then(async () => {
+      const taking = spinState === 'capturing' || spinState === 'finishing';
+      if (!taking || spinFrames.length >= spinSettings.target) {
+        return;
+      }
+      const blob = await grabFrame(spinVideo);
+      if (!blob) {
+        setText('spin-status', 'No picture from the camera yet. Wait a moment and try again.', 'bad');
+        return;
+      }
+      spinFrames.push(blob);
+      setText('spin-status', '');
+      drawSpinControls();
+      if (spinFrames.length >= spinSettings.target && spinState === 'capturing') {
+        finishSpinCapture(); // not awaited: it waits for this picture to finish
+      }
+    })
+    .catch((err) => setText('spin-status', 'Could not take a picture: ' + err.message, 'bad'));
+  return spinGrabs;
+}
+
+async function finishSpinCapture() {
+  if (spinState === 'countdown') {
+    clearTimeout(spinTimer);
+    spinState = document.hidden ? 'off' : 'ready';
+    if (document.hidden) {
+      stopSpinCamera();
+    }
+    releaseSpinWakeLock();
+    return drawSpinControls();
+  }
+  if (spinState !== 'capturing') {
+    return;
+  }
+  clearTimeout(spinTimer);
+  spinState = 'finishing';
+  drawSpinControls();
+  await spinGrabs; // let a picture being taken finish
+  if (spinState !== 'finishing') {
+    return; // left the screen meanwhile
+  }
+  releaseSpinWakeLock();
+  freeFrameCanvas();
+  if (spinFrames.length < SPIN_MIN_FRAMES) {
+    spinFrames = [];
+    if (document.hidden) {
+      stopSpinCamera();
+      spinState = 'off';
+    } else {
+      spinState = 'ready';
+    }
+    setText('spin-status', 'A spin needs at least ' + SPIN_MIN_FRAMES + ' pictures. Try again.', 'bad');
+    return drawSpinControls();
+  }
+  stopSpinCamera();
+  spinState = 'review';
+  await showSpinReview();
+}
+
+// ---------- Checking a new spin before saving ----------
+
+async function showSpinReview() {
+  drawSpinControls();
+  const url = newUrlGroup('spin-review');
+  spinFrameUrls = spinFrames.map(url);
+  $('spin-first').src = spinFrameUrls[0];
+  const trim = $('spin-trim');
+  trim.min = String(SPIN_MIN_FRAMES);
+  trim.max = String(spinFrames.length);
+  trim.value = String(spinFrames.length);
+  setText('spin-review-status', 'Loading…');
+  try {
+    const loaded = await reviewPlayer.load(spinFrames, (done, total) => {
+      setText('spin-review-status', 'Loading ' + done + ' / ' + total + '…');
+    });
+    if (!loaded) {
+      return;
+    }
+  } catch (err) {
+    setText('spin-review-status', 'Could not show the spin: ' + err.message, 'bad');
+    return;
+  }
+  setText('spin-review-status', '');
+  drawSpinTrim();
+  reviewPlayer.show(0);
+  reviewPlayer.play();
+}
+
+function drawSpinTrim() {
+  const last = Number($('spin-trim').value);
+  reviewPlayer.setLength(last);
+  $('spin-trim-text').textContent = 'Last picture: ' + last + ' of ' + spinFrames.length;
+  $('spin-last').src = spinFrameUrls[last - 1];
+}
+
+$('spin-trim').addEventListener('input', () => {
+  reviewPlayer.stop();
+  drawSpinTrim();
+  reviewPlayer.show(Number($('spin-trim').value) - 1);
+});
+
+$('spin-retake').addEventListener('click', () => {
+  if (spinState !== 'review') {
+    return;
+  }
+  leaveSpinCapture();
+  setText('spin-status', '');
+  drawSpinControls();
+  startSpinCamera();
+});
+
+$('spin-save').addEventListener('click', async () => {
+  if (spinState !== 'review') {
+    return;
+  }
+  spinState = 'saving';
+  reviewPlayer.stop();
+  drawSpinControls();
+  setText('spin-review-status', 'Saving…');
+  const frames = spinFrames.slice(0, Number($('spin-trim').value));
+  try {
+    const first = await loadImage(frames[0]);
+    const thumb = await shrinkImage(first, THUMB_LONG_EDGE, THUMB_QUALITY);
+    await saveQueue;
+    const id = await db.spins.add({
+      miniatureId: spinMini.id,
+      takenAt: Date.now(),
+      frames,
+      thumb: thumb.blob,
+      width: first.naturalWidth,
+      height: first.naturalHeight,
+      stage: spinMini.stage,
+      note: '',
+      reverse: false,
+    });
+    goTo('#/spin/' + id);
+  } catch (err) {
+    spinState = 'review';
+    drawSpinControls();
+    setText('spin-review-status', 'Could not save: ' + err.name + ' - ' + err.message, 'bad');
+  }
+});
+
+// ---------- Watching a 360° spin ----------
+
+const viewPlayer = createSpinPlayer($('spin-view-stage'), $('spin-view-canvas'), $('spin-play'));
+
+// A quick double tap on a spin must not zoom the page (the spin has no
+// buttons, so taps do nothing else). Drags move further and are not affected.
+handleQuickTaps($('spin-view-stage'), () => {});
+handleQuickTaps($('spin-review-stage'), () => {});
+let viewerSpin = null;
+let viewerSpinMini = null;
+
+for (const stage of STAGES) {
+  const option = el('option', '', stage.label);
+  option.value = stage.key;
+  $('spin-stage').append(option);
+}
+
+async function showSpin(spinId) {
+  const spin = await db.spins.get(spinId);
+  if (!spin) {
+    return goTo('#/');
+  }
+  viewerSpin = spin;
+  viewerSpinMini = await db.miniatures.get(spin.miniatureId);
+  $('spin-back').href = '#/mini/' + spin.miniatureId;
+  $('spin-back').textContent = '‹ ' + (viewerSpinMini ? viewerSpinMini.name : 'Back');
+  $('spin-reverse').checked = Boolean(spin.reverse);
+  viewPlayer.reverse = Boolean(spin.reverse);
+  drawSpinDetails();
+  setText('spin-form-status', '');
+  showScreen('spin');
+
+  const loading = $('spin-view-loading');
+  loading.textContent = 'Loading…';
+  loading.hidden = false;
+  try {
+    const loaded = await viewPlayer.load(spin.frames, (done, total) => {
+      loading.textContent = 'Loading ' + done + ' / ' + total + '…';
+    });
+    if (loaded) {
+      loading.hidden = true;
+    }
+  } catch (err) {
+    loading.textContent = 'Could not show the spin: ' + err.message;
+  }
+}
+
+function drawSpinDetails() {
+  const spin = viewerSpin;
+  const meta = $('spin-meta');
+  meta.replaceChildren(el('span', '', formatDate(spin.takenAt) + ' · ' + plural(spin.frames.length, 'picture') + ' '));
+  if (spin.stage) {
+    meta.append(stageBadge(spin.stage));
+  }
+  $('spin-date').value = dateFieldValue(spin.takenAt);
+  $('spin-stage').value = spin.stage || 'sprue';
+  $('spin-note').value = spin.note || '';
+}
+
+$('spin-reverse').addEventListener('change', async () => {
+  const reverse = $('spin-reverse').checked;
+  viewPlayer.reverse = reverse;
+  viewerSpin.reverse = reverse;
+  await db.spins.update(viewerSpin.id, { reverse });
+});
+
+$('spin-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!$('spin-date').value) {
+    return;
+  }
+  const changes = {
+    takenAt: withDate(viewerSpin.takenAt, $('spin-date').value),
+    stage: $('spin-stage').value,
+    note: $('spin-note').value.trim(),
+  };
+  await db.spins.update(viewerSpin.id, changes);
+  Object.assign(viewerSpin, changes);
+  drawSpinDetails();
+  setText('spin-form-status', 'Saved.', 'ok');
+});
+
+// The picture showing right now becomes a progress photo.
+$('spin-to-photo').addEventListener('click', async () => {
+  if (!viewPlayer.length) {
+    return;
+  }
+  const number = viewPlayer.index + 1;
+  const blob = viewerSpin.frames[viewPlayer.index];
+  try {
+    const img = await loadImage(blob);
+    const thumb = await shrinkImage(img, THUMB_LONG_EDGE, THUMB_QUALITY);
+    await db.photos.add({
+      miniatureId: viewerSpin.miniatureId,
+      takenAt: viewerSpin.takenAt,
+      blob,
+      thumb: thumb.blob,
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+      stage: viewerSpin.stage,
+      note: '',
+    });
+    setText('spin-form-status', 'Picture ' + number + ' saved as a progress photo.', 'ok');
+  } catch (err) {
+    setText('spin-form-status', 'Could not save the photo: ' + err.message, 'bad');
+  }
+});
+
+$('spin-delete').addEventListener('click', async () => {
+  if (!confirm('Delete this spin? This cannot be undone.')) {
+    return;
+  }
+  await db.spins.delete(viewerSpin.id);
+  goTo('#/mini/' + viewerSpin.miniatureId);
+});
+
 // ---------- Shopping list ----------
 // Paints to buy: every paint used in a colour scheme that is not owned,
 // plus paints added by hand (onList), e.g. owned paints that are running low.
@@ -1907,6 +2497,14 @@ async function refreshDiagnostics() {
   });
   setText('diag-photos', photoCount ? plural(photoCount, 'photo') + ', ' + formatSize(photoBytes) : 'none yet');
 
+  let spinCount = 0;
+  let spinBytes = 0;
+  await db.spins.each((spin) => {
+    spinCount++;
+    spinBytes += (spin.frames || []).reduce((sum, frame) => sum + frame.size, 0) + (spin.thumb ? spin.thumb.size : 0);
+  });
+  setText('diag-spins', spinCount ? plural(spinCount, 'spin') + ', ' + formatSize(spinBytes) : 'none yet');
+
   if (!('serviceWorker' in navigator)) {
     setText('diag-sw', 'not supported', 'bad');
   } else if (navigator.serviceWorker.controller) {
@@ -2020,10 +2618,16 @@ startBtn.addEventListener('click', startCamera);
 snapBtn.addEventListener('click', takePhoto);
 stopBtn.addEventListener('click', stopCamera);
 
-// Turn the camera off when the app goes into the background.
+// Turn the cameras off when the app goes into the background.
+// A spin being taken stops there, keeping the pictures taken so far.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     stopCamera();
+    pauseSpinCapture();
+    viewPlayer.stop();
+    reviewPlayer.stop();
+  } else if (!$('screen-spin-capture').hidden && spinState === 'off') {
+    startSpinCamera();
   }
 });
 

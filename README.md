@@ -16,11 +16,12 @@ A miniature painting tracker that runs as a web app on the iPhone. It is install
 - **Shared colour schemes**: each army has named schemes, such as "Battle armour". A scheme is an ordered list of steps (part, technique, paint and an optional note). Miniatures and squads pick a scheme, so editing it once updates every unit using it. Paints not yet owned are marked.
 - **Shopping list**: every paint used in a colour scheme that is not owned, plus paints added by hand (for example to restock a paint that is running low). Grouped by range, filterable by army, and shareable as text to Notes or Messages. Ticking a paint off marks it as owned.
 - **Progress photos**: add photos to a miniature or squad with the iPhone camera or from the photo library (several at once). Photos are shrunk to about 1280 pixels before saving, keep the date they were taken and the squad's stage at the time, and can have a note. Each miniature shows a timeline; tap a photo to view it full screen, swipe between photos, edit, share or delete it.
+- **360° spins**: hold the phone steady, turn the model on a turntable, and the app takes 24 or 36 pictures from the live camera, either automatically every 1–2 seconds or one per tap. Dragging a finger sideways across the spin then turns the model round (a flip-book of photos, not a 3D model). Extra pictures at the end can be trimmed so the loop joins up, and any picture can be kept as a progress photo.
 - **Backup and restore**: save all data to a single file (for example in the Files app) and restore it later.
-- **Diagnostics**: a Settings screen showing whether the app runs from the home screen, whether storage is protected, how much space is used, and the app version.
+- **Diagnostics**: a Settings screen showing whether the app runs from the home screen, whether storage is protected, how much space is used (including by photos and spins), and the app version.
 - **Camera test**: checks the live rear camera and the photo picker.
 
-Planned: 360° turntable "spins" and simple army lists.
+Planned: simple army lists.
 
 ---
 
@@ -49,7 +50,7 @@ Only a web browser is needed; no command line or build step.
    - Choose **Public**. GitHub Pages is free for public repositories, and the code contains no personal data.
    - Click **Create repository**.
 3. On the empty repository page, click **uploading an existing file** and drag in the app files:
-   - `index.html`, `styles.css`, `app.js`, `db.js`, `units.js`, `paints.js`, `photos.js`, `sw.js`, `manifest.webmanifest`, `README.md`
+   - `index.html`, `styles.css`, `app.js`, `db.js`, `units.js`, `paints.js`, `photos.js`, `spins.js`, `sw.js`, `manifest.webmanifest`, `README.md`
    - the `icons` folder (3 PNG files)
    - the `vendor` folder (2 JavaScript files)
    - the `data` folder (`units.json`, `paints.json` and their licence notices)
@@ -121,6 +122,17 @@ Open the app **from the home screen icon**, then check:
 - [ ] Delete a photo.
 - [ ] The army screen shows each miniature's latest photo, and **Settings → Diagnostics → Photos** shows the count and size.
 
+**360° spins**
+- [ ] On a miniature, **+ New spin**: the live rear camera appears (allow camera access if asked).
+- [ ] **Auto** mode: tap **Start spin**. After a 3‑2‑1 countdown, a picture is taken every second (a white flash and a counter show each one) while the model turns. It stops by itself at the chosen number of pictures.
+- [ ] **Tap** mode: tap **Snap** after each small turn, then **Done**.
+- [ ] Before saving: drag sideways across the spin to turn the model, and use **▶ Spin**. If the turn went past the start, move the **Last picture** slider until the last picture matches the first one. Then **Save spin**.
+- [ ] **Retake** throws the pictures away and starts again.
+- [ ] Open a saved spin: dragging and **▶ Spin** work. **Reverse** swaps the direction and is remembered.
+- [ ] Change a spin's date, stage and note, and save. **Save this picture as a photo** adds the picture showing to the progress photos.
+- [ ] Switching to another app during a spin stops it and keeps the pictures taken so far.
+- [ ] Delete a spin. **Settings → Diagnostics → 360° spins** shows the count and size.
+
 **Backup and restore**
 - [ ] **Create backup file → Save backup file… → Save to Files**. The file `paint-log-backup-….json` appears in the Files app.
 - [ ] Add a test miniature, then **Restore from backup…** and pick the backup file. After "Restore complete", the test miniature is gone and everything else is back.
@@ -135,6 +147,7 @@ Open the app **from the home screen icon**, then check:
 
 - Errors are shown on screen in red, with the exact error text. Note that text when reporting a problem.
 - iOS may ask for camera permission again each time the app is opened. This is normal for home screen web apps.
+- Spins: web apps cannot lock the camera's focus or brightness, so these can change a little between pictures. Steady, even light, a plain background and a propped-up phone give the smoothest spins. The dashed line on the camera view helps keep the turntable centred.
 - If an update does not appear, close and reopen the app once more.
 
 ---
