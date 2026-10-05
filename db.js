@@ -159,6 +159,26 @@ async function deleteScheme(schemeId) {
   });
 }
 
+// Deleting an army list deletes its entries. The miniatures are not touched.
+async function deleteList(listId) {
+  await db.transaction('rw', db.lists, db.listEntries, async () => {
+    await db.listEntries.where('listId').equals(listId).delete();
+    await db.lists.delete(listId);
+  });
+}
+
+// Copy a list and its entries. Returns the new list's id.
+async function duplicateList(listId) {
+  return db.transaction('rw', db.lists, db.listEntries, async () => {
+    const list = await db.lists.get(listId);
+    const entries = await db.listEntries.where('listId').equals(listId).toArray();
+    const { id, ...fields } = list;
+    const newId = await db.lists.add({ ...fields, name: list.name + ' (copy)', createdAt: Date.now() });
+    await db.listEntries.bulkAdd(entries.map(({ id: entryId, ...entry }) => ({ ...entry, listId: newId })));
+    return newId;
+  });
+}
+
 // ---------- Backup ----------
 
 // Make a backup file (a Blob) holding every table, including photos.

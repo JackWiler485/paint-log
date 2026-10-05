@@ -68,6 +68,11 @@
       <p id="scheme-empty" class="empty" hidden>No colour schemes yet. A scheme is a list of paint steps that several units can share.</p>
       <a class="button big secondary" id="scheme-add">+ New scheme</a>
 
+      <h3>Army lists</h3>
+      <ul id="army-lists" class="list"></ul>
+      <p id="army-lists-empty" class="empty" hidden>No army lists yet. A list adds up the points of the units you plan to play.</p>
+      <a class="button big secondary" id="list-new">+ New list</a>
+
       <div class="row actions">
         <a class="button secondary" id="army-edit">Edit army</a>
         <button class="danger" id="army-delete">Delete army</button>
@@ -386,6 +391,128 @@
       </div>
     </section>
 
+    <!-- Army list form (new or edit) -->
+    <section id="screen-list-form" class="screen" hidden>
+      <a class="back" id="list-form-back">‹ Back</a>
+      <h2 id="list-form-title">New army list</h2>
+      <form id="list-form" class="form">
+        <label>Name
+          <input id="list-name" type="text" required autocomplete="off" placeholder="e.g. Saturday game">
+        </label>
+        <label>Points limit
+          <input id="list-limit" type="number" min="1" max="100000" step="1" inputmode="numeric" required>
+        </label>
+        <div class="row limit-choices" id="list-limit-choices">
+          <button type="button" class="secondary" data-limit="500">500</button>
+          <button type="button" class="secondary" data-limit="1000">1,000</button>
+          <button type="button" class="secondary" data-limit="2000">2,000</button>
+          <button type="button" class="secondary" data-limit="3000">3,000</button>
+        </div>
+        <button type="submit" class="big">Save</button>
+      </form>
+    </section>
+
+    <!-- One army list -->
+    <section id="screen-list" class="screen" hidden>
+      <a class="back" id="list-back">‹ Back</a>
+      <h2 id="list-title"></h2>
+      <p id="list-army-text" class="subtitle"></p>
+
+      <div class="points-box">
+        <div class="points-total"><span id="list-total"></span> <span class="points-limit" id="list-limit-text"></span></div>
+        <div class="points-bar"><div id="list-bar"></div></div>
+        <p id="list-left" class="progress-text"></p>
+        <p id="list-owned" class="progress-text"></p>
+      </div>
+
+      <!-- All taps in this list are handled by the app (see handleQuickTaps in app.js) -->
+      <ul id="list-entries" class="list entries"></ul>
+      <p id="list-tip" class="hint" hidden>Tap a unit to add extra points, add another copy or remove it.</p>
+      <p id="list-empty" class="empty" hidden>No units yet. Tap "Add unit" to start.</p>
+      <a class="button big" id="list-add">+ Add unit</a>
+
+      <div class="row">
+        <button class="secondary" id="list-share">Share as text</button>
+        <button class="secondary" id="list-duplicate">Duplicate list</button>
+      </div>
+      <p id="list-share-status" class="status"></p>
+      <textarea id="list-share-text" class="share-text" rows="10" readonly hidden></textarea>
+      <p id="list-data-note" class="hint data-note"></p>
+
+      <div class="row actions">
+        <a class="button secondary" id="list-edit">Edit list</a>
+        <button class="danger" id="list-delete">Delete list</button>
+      </div>
+    </section>
+
+    <!-- Adding units to an army list -->
+    <section id="screen-list-add" class="screen" hidden>
+      <a class="back" id="list-add-back">‹ Back</a>
+      <h2>Add units</h2>
+      <div class="add-summary">
+        <div id="list-add-total" class="list-title"></div>
+        <div id="list-add-status" class="list-sub"></div>
+      </div>
+
+      <div id="list-search-box">
+        <div class="form search-field">
+          <input id="list-search" type="search" autocomplete="off" placeholder="Search units, e.g. intercessor">
+        </div>
+        <ul id="list-results" class="list unit-results"></ul>
+        <p id="list-search-note" class="hint"></p>
+      </div>
+      <p id="list-search-off" class="hint" hidden></p>
+
+      <h3>From my miniatures</h3>
+      <ul id="list-owned-units" class="list"></ul>
+      <p id="list-owned-empty" class="empty" hidden>This army has no miniatures yet.</p>
+
+      <h3>Type by hand</h3>
+      <p class="hint">For units missing from the search, with their points from the points book.</p>
+      <form id="list-hand-form" class="form">
+        <label>Name
+          <input id="hand-name" type="text" required autocomplete="off" placeholder="e.g. Forge World tank">
+        </label>
+        <label>Number of models
+          <input id="hand-models" type="number" min="1" max="200" step="1" inputmode="numeric" required>
+        </label>
+        <label>Points
+          <input id="hand-points" type="number" min="0" max="10000" step="1" inputmode="numeric" required>
+        </label>
+        <button type="submit" class="big secondary">Add to list</button>
+      </form>
+    </section>
+
+    <!-- One unit in an army list -->
+    <section id="screen-entry" class="screen" hidden>
+      <a class="back" id="entry-back">‹ Back</a>
+      <h2 id="entry-title"></h2>
+      <p id="entry-unit-text" class="subtitle"></p>
+      <form id="entry-form" class="form">
+        <label>Name
+          <input id="entry-name" type="text" required autocomplete="off">
+        </label>
+        <label id="entry-size-label">Squad size
+          <select id="entry-size"></select>
+        </label>
+        <label id="entry-models-label">Number of models
+          <input id="entry-models" type="number" min="1" max="200" step="1" inputmode="numeric">
+        </label>
+        <label id="entry-points-label">Points
+          <input id="entry-points" type="number" min="0" max="10000" step="1" inputmode="numeric">
+        </label>
+        <label>Extra points (optional)
+          <input id="entry-extra" type="number" min="0" max="10000" step="1" inputmode="numeric" placeholder="0">
+        </label>
+        <p class="hint">For wargear upgrades and enhancements. The app does not know their names or costs, so add them from the points book.</p>
+        <button type="submit" class="big">Save</button>
+      </form>
+      <button class="big secondary" id="entry-copy">+ Add another copy</button>
+      <div class="row actions">
+        <button class="danger" id="entry-remove">Remove from list</button>
+      </div>
+    </section>
+
     <!-- Shopping list -->
     <section id="screen-shop" class="screen" hidden>
       <h2>Shopping list</h2>
@@ -446,6 +573,9 @@
         <dt>360° spins</dt>
         <dd id="diag-spins">…</dd>
 
+        <dt>Army lists</dt>
+        <dd id="diag-lists">…</dd>
+
         <dt>Works offline (service worker)</dt>
         <dd id="diag-sw">…</dd>
       </dl>
@@ -490,6 +620,7 @@
   <script src="paints.js"></script>
   <script src="photos.js"></script>
   <script src="spins.js"></script>
+  <script src="lists.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

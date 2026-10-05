@@ -17,11 +17,10 @@ A miniature painting tracker that runs as a web app on the iPhone. It is install
 - **Shopping list**: every paint used in a colour scheme that is not owned, plus paints added by hand (for example to restock a paint that is running low). Grouped by range, filterable by army, and shareable as text to Notes or Messages. Ticking a paint off marks it as owned.
 - **Progress photos**: add photos to a miniature or squad with the iPhone camera or from the photo library (several at once). Photos are shrunk to about 1280 pixels before saving, keep the date they were taken and the squad's stage at the time, and can have a note. Each miniature shows a timeline; tap a photo to view it full screen, swipe between photos, edit, share or delete it.
 - **360° spins**: hold the phone steady, turn the model on a turntable, and the app takes 24 or 36 pictures from the live camera, either automatically every 1–2 seconds or one per tap. Dragging a finger sideways across the spin then turns the model round (a flip-book of photos, not a 3D model). Extra pictures at the end can be trimmed so the loop joins up, and any picture can be kept as a progress photo.
+- **Army lists**: each army can have lists with a points limit (for example 1,000 or 2,000 points). Units are added from a search that shows their points, from the army's own miniatures in one tap, or typed by hand with their points. The list shows the total, a warning when over the limit, and how many units are owned and battle-ready (painted or based). Units whose later copies cost more (for example "3rd+ unit costs") are priced per copy. Extra points can be added per unit for wargear and enhancements. Lists can be shared as text and duplicated. Points come from the Munitorum Field Manual data (see "Updating the unit and paint lists"); there is no rules checking.
 - **Backup and restore**: save all data to a single file (for example in the Files app) and restore it later.
 - **Diagnostics**: a Settings screen showing whether the app runs from the home screen, whether storage is protected, how much space is used (including by photos and spins), and the app version.
 - **Camera test**: checks the live rear camera and the photo picker.
-
-Planned: simple army lists.
 
 ---
 
@@ -50,7 +49,7 @@ Only a web browser is needed; no command line or build step.
    - Choose **Public**. GitHub Pages is free for public repositories, and the code contains no personal data.
    - Click **Create repository**.
 3. On the empty repository page, click **uploading an existing file** and drag in the app files:
-   - `index.html`, `styles.css`, `app.js`, `db.js`, `units.js`, `paints.js`, `photos.js`, `spins.js`, `sw.js`, `manifest.webmanifest`, `README.md`
+   - `index.html`, `styles.css`, `app.js`, `db.js`, `units.js`, `paints.js`, `photos.js`, `spins.js`, `lists.js`, `sw.js`, `manifest.webmanifest`, `README.md`
    - the `icons` folder (3 PNG files)
    - the `vendor` folder (2 JavaScript files)
    - the `data` folder (`units.json`, `paints.json` and their licence notices)
@@ -132,6 +131,19 @@ Open the app **from the home screen icon**, then check:
 - [ ] Change a spin's date, stage and note, and save. **Save this picture as a photo** adds the picture showing to the progress photos.
 - [ ] Switching to another app during a spin stops it and keeps the pictures taken so far.
 - [ ] Delete a spin. **Settings → Diagnostics → 360° spins** shows the count and size.
+
+**Army lists**
+- [ ] On an army, **+ New list**: enter a name, tap **2,000** and **Save**.
+- [ ] **+ Add unit**: search for a unit. Each result shows its points per squad size and "You own …" for units in the army. Tapping a result adds it; tapping it again adds another copy. The total at the top updates each time.
+- [ ] Under **From my miniatures**, tap a squad: it is added with its points.
+- [ ] **Type by hand**: add a unit with a name and points.
+- [ ] A unit with a "3rd+" price (for example 3 × Castigator for Adepta Sororitas: 165 + 165 + 185 = 515) costs more from the 3rd copy, matching the points book.
+- [ ] On the list, **−** and **+** change the squad size and its points. Quick taps do not zoom the screen.
+- [ ] Owned units show their stage; units not in the army show "Not owned". The summary shows "Owned: … · Battle-ready: …".
+- [ ] Tap a unit: add **Extra points**, **+ Add another copy**, or **Remove from list**.
+- [ ] Go over the limit: the total and bar turn red with "Over by … pts".
+- [ ] **Share as text** opens the share sheet. **Duplicate list** makes a copy. **Delete list** leaves the miniatures alone.
+- [ ] The army screen shows each list as "total / limit pts". **Settings → Diagnostics → Army lists** shows the count.
 
 **Backup and restore**
 - [ ] **Create backup file → Save backup file… → Save to Files**. The file `paint-log-backup-….json` appears in the Files app.

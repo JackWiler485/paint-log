@@ -924,3 +924,121 @@ button.owned-toggle.owned {
   font-size: 13px;
   padding: 24px 16px;
 }
+
+/* ---------- Army lists ---------- */
+
+.limit-choices {
+  margin: -8px 0 16px;
+}
+
+.limit-choices button {
+  flex: 1;
+}
+
+.points-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.points-box p {
+  margin: 4px 0 0;
+}
+
+.points-total {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.points-limit {
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.points-bar {
+  height: 10px;
+  margin: 8px 0;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.points-bar > div {
+  width: 0;
+  height: 100%;
+  background: var(--ok);
+}
+
+.points-bar > div.over {
+  background: var(--bad);
+}
+
+/* The list is tapped quickly too (squad size - and +) */
+#list-entries {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.entry-row {
+  display: grid;
+  grid-template-columns: 1fr auto 80px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px 0;
+}
+
+button.entry-text {
+  min-width: 0;
+  padding: 4px 0 4px 16px;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  font-weight: 400;
+  border-radius: 0;
+}
+
+.entry-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.entry-points {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.size-buttons {
+  justify-content: flex-end;
+}
+
+/* The list's total stays at the top while scrolling the add screen */
+.add-summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 -16px 12px;
+  padding: 8px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Room for two lines, so a new message doesn't push the units down under the finger */
+#list-add-status {
+  min-height: 2.9em;
+}
+
+.search-field {
+  margin-bottom: 16px;
+}
+
+.data-note {
+  font-size: 14px;
+}

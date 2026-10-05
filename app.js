@@ -69,6 +69,11 @@ const routes = [
   [/^#\/scheme\/(\d+)\/step\/new$/, (m) => showStepForm(null, Number(m[1]))],
   [/^#\/scheme\/(\d+)$/, (m) => showScheme(Number(m[1]))],
   [/^#\/step\/(\d+)\/edit$/, (m) => showStepForm(Number(m[1]))],
+  [/^#\/list\/new\/(\d+)$/, (m) => showListForm(null, Number(m[1]))],
+  [/^#\/list\/(\d+)\/edit$/, (m) => showListForm(Number(m[1]))],
+  [/^#\/list\/(\d+)\/add$/, (m) => showListAdd(Number(m[1]))],
+  [/^#\/list\/(\d+)$/, (m) => showList(Number(m[1]))],
+  [/^#\/entry\/(\d+)$/, (m) => showEntry(Number(m[1]))],
   [/^#\/paints$/, () => showPaints()],
   [/^#\/shop$/, () => showShop()],
   [/^#\/photo\/(\d+)$/, (m) => showPhoto(Number(m[1]))],
@@ -307,13 +312,14 @@ async function showArmy(armyId) {
   }
   $('scheme-empty').hidden = schemes.length > 0;
   $('scheme-add').href = '#/scheme/new/' + armyId;
+  await drawArmyLists(army);
   showScreen('army');
 }
 
 $('army-delete').addEventListener('click', async () => {
   const army = await db.armies.get(currentArmyId);
   const count = await db.miniatures.where('armyId').equals(currentArmyId).count();
-  if (!army || !confirm('Delete "' + army.name + '", its ' + count + ' miniatures and its colour schemes? This cannot be undone.')) {
+  if (!army || !confirm('Delete "' + army.name + '", its ' + count + ' miniatures, its colour schemes and its army lists? This cannot be undone.')) {
     return;
   }
   await deleteArmy(currentArmyId);
@@ -2236,18 +2242,23 @@ function shoppingListText() {
   return lines.join('\n');
 }
 
-$('shop-share').addEventListener('click', async () => {
-  const text = shoppingListText();
-  $('shop-share-text').hidden = true;
+$('shop-share').addEventListener('click', () => {
+  shareText('Paint shopping list', shoppingListText(), 'shop-share-status', 'shop-share-text');
+});
+
+// Share text with the share sheet (e.g. to Notes or Messages). Falls back to
+// copying it, and as a last resort shows it in a box to copy by hand.
+async function shareText(title, text, statusId, boxId) {
+  $(boxId).hidden = true;
   try {
     if (navigator.share) {
-      await navigator.share({ title: 'Paint shopping list', text });
-      setText('shop-share-status', '');
+      await navigator.share({ title, text });
+      setText(statusId, '');
       return;
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text);
-      setText('shop-share-status', 'List copied. Paste it into Notes or a message.', 'ok');
+      setText(statusId, 'Copied. Paste it into Notes or a message.', 'ok');
       return;
     }
     throw new Error('Sharing is not available here.');
@@ -2255,12 +2266,11 @@ $('shop-share').addEventListener('click', async () => {
     if (err.name === 'AbortError') {
       return; // the share sheet was closed
     }
-    // Last resort: show the text so it can be selected and copied by hand.
-    $('shop-share-text').value = text;
-    $('shop-share-text').hidden = false;
-    setText('shop-share-status', 'Could not share (' + err.message + '). Select and copy the text below.', 'bad');
+    $(boxId).value = text;
+    $(boxId).hidden = false;
+    setText(statusId, 'Could not share (' + err.message.replace(/\.$/, '') + '). Select and copy the text below.', 'bad');
   }
-});
+}
 
 // ---------- Adding paints by hand ----------
 
@@ -2459,6 +2469,580 @@ async function requestPersistentStorage() {
   }
 }
 
+// ---------- Army lists: shared helpers ----------
+
+// The army's units from the unit list, as a lookup by name. Empty if the army
+// has no faction or the unit list can't be loaded (saved points are used then).
+async function armyUnits(army) {
+  try {
+    return unitMap(await unitsForFaction(army.factionId));
+  } catch (err) {
+    return new Map();
+  }
+}
+
+async function entriesOfList(listId) {
+  const entries = await db.listEntries.where('listId').equals(listId).toArray();
+  return entries.sort((a, b) => a.order - b.order);
+}
+
+// "1,240 / 2,000 pts"
+function pointsOfLimit(total, limit) {
+  return formatPoints(total) + ' / ' + formatPoints(limit) + ' pts';
+}
+
+// "760 pts left" or "Over by 85 pts"
+function pointsLeft(total, limit) {
+  if (total > limit) {
+    return 'Over by ' + formatPoints(total - limit) + ' pts';
+  }
+  return total === limit ? 'Exactly at the limit' : formatPoints(limit - total) + ' pts left';
+}
+
+// A date like '2026-09-30' as "30 Sep 2026"
+function formatDay(text) {
+  const [year, month, day] = text.split('-').map(Number);
+  return formatDate(new Date(year, month - 1, day));
+}
+
+// The army's lists on the army screen, with their points.
+async function drawArmyLists(army) {
+  const lists = await db.lists.where('armyId').equals(army.id).sortBy('createdAt');
+  const units = lists.length ? await armyUnits(army) : new Map();
+  const box = $('army-lists');
+  box.replaceChildren();
+  for (const list of lists) {
+    const entries = await entriesOfList(list.id);
+    const { total } = priceList(entries, units);
+    const link = el('a', 'list-item');
+    link.href = '#/list/' + list.id;
+    const text = el('div', 'list-text');
+    text.append(el('div', 'list-title', list.name));
+    const sub = el('div', 'list-sub');
+    sub.append(el('span', total > list.pointsLimit ? 'bad' : '', pointsOfLimit(total, list.pointsLimit)));
+    sub.append(' · ' + plural(entries.length, 'unit'));
+    text.append(sub);
+    link.append(text, el('span', 'chevron', '›'));
+    const item = el('li');
+    item.append(link);
+    box.append(item);
+  }
+  $('army-lists-empty').hidden = lists.length > 0;
+  $('list-new').href = '#/list/new/' + army.id;
+}
+
+// Everything the list screens need, kept in memory so taps redraw instantly.
+let currentList = null;
+let currentListArmy = null;
+let currentEntries = [];
+let listUnits = new Map();
+let listSquads = [];
+
+// Load a list and its army. Returns false if either no longer exists.
+async function loadList(listId) {
+  const list = await db.lists.get(listId);
+  const army = list && await db.armies.get(list.armyId);
+  if (!army) {
+    return false;
+  }
+  currentList = list;
+  currentListArmy = army;
+  currentEntries = await entriesOfList(listId);
+  listUnits = await armyUnits(army);
+  listSquads = await db.miniatures.where('armyId').equals(army.id).sortBy('createdAt');
+  return true;
+}
+
+function rowOf(entry) {
+  return priceList(currentEntries, listUnits).rows.find((row) => row.entry === entry);
+}
+
+// Add a unit to the current list. The screen can update straight away;
+// saving is queued (see queueSave).
+function addEntry(fields) {
+  const order = currentEntries.reduce((max, e) => Math.max(max, e.order || 0), 0) + 1;
+  const entry = { listId: currentList.id, name: fields.name, unitName: fields.unitName || null,
+    models: fields.models, points: fields.points || 0, extraPoints: 0, order };
+  currentEntries.push(entry);
+  const row = rowOf(entry);
+  entry.points = row.base; // saved in case the unit later goes missing from the points data
+  queueSave(async () => {
+    entry.id = await db.listEntries.add({ ...entry });
+  });
+  return row;
+}
+
+// ---------- Army list form ----------
+
+let editingList = null;
+
+async function showListForm(listId, armyId) {
+  let list = { name: '', pointsLimit: 2000, armyId };
+  if (listId) {
+    list = await db.lists.get(listId);
+  }
+  const army = list && await db.armies.get(list.armyId);
+  if (!army) {
+    return goTo('#/');
+  }
+  editingList = list;
+  $('list-form-title').textContent = listId ? 'Edit army list' : 'New army list';
+  $('list-form-back').href = listId ? '#/list/' + listId : '#/army/' + army.id;
+  $('list-name').value = list.name;
+  $('list-limit').value = list.pointsLimit;
+  showScreen('list-form');
+}
+
+$('list-limit-choices').addEventListener('click', (event) => {
+  const button = event.target.closest('button');
+  if (button) {
+    $('list-limit').value = button.dataset.limit;
+  }
+});
+
+$('list-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = $('list-name').value.trim();
+  const pointsLimit = Math.round(Number($('list-limit').value));
+  if (!name || !(pointsLimit >= 1)) {
+    return;
+  }
+  let id = editingList.id;
+  if (id) {
+    await db.lists.update(id, { name, pointsLimit });
+  } else {
+    id = await db.lists.add({ armyId: editingList.armyId, name, pointsLimit, createdAt: Date.now() });
+  }
+  goTo('#/list/' + id);
+});
+
+// ---------- One army list ----------
+
+async function showList(listId) {
+  if (!(await loadList(listId))) {
+    return goTo('#/');
+  }
+  setText('list-share-status', '');
+  $('list-share-text').hidden = true;
+
+  let note = '';
+  if (!currentListArmy.factionId) {
+    note = 'This army has no faction picked, so units are typed by hand with their points. Pick a faction (Edit army) to search units with their points.';
+  } else {
+    try {
+      const catalogue = await loadCatalogue();
+      note = 'Points: Munitorum Field Manual data ' + catalogue.dataVersion + ', ' + formatDay(catalogue.dataUpdated) +
+        '. Check the points book for later changes.';
+    } catch (err) {
+      note = 'The points data could not be loaded, so saved points are shown.';
+    }
+  }
+  $('list-data-note').textContent = note;
+  drawList();
+  showScreen('list');
+}
+
+// Draw the list screen from memory (no database reading), so it keeps up with quick taps.
+function drawList() {
+  const list = currentList;
+  const army = currentListArmy;
+  const { rows, total } = priceList(currentEntries, listUnits);
+  const owned = matchOwned(currentEntries, listSquads);
+  const over = total > list.pointsLimit;
+
+  $('list-back').href = '#/army/' + army.id;
+  $('list-back').textContent = '‹ ' + army.name;
+  $('list-title').textContent = list.name;
+  const models = currentEntries.reduce((sum, e) => sum + e.models, 0);
+  $('list-army-text').textContent = currentEntries.length ? plural(currentEntries.length, 'unit') + ' · ' + plural(models, 'model') : '';
+
+  setText('list-total', formatPoints(total) + ' pts', over ? 'bad' : null);
+  $('list-limit-text').textContent = 'of ' + formatPoints(list.pointsLimit);
+  $('list-bar').style.width = Math.min(100, (total / list.pointsLimit) * 100) + '%';
+  $('list-bar').classList.toggle('over', over);
+  setText('list-left', pointsLeft(total, list.pointsLimit), over ? 'bad' : null);
+
+  const ready = [...owned.values()].filter(isBattleReady).length;
+  $('list-owned').textContent = currentEntries.length
+    ? 'Owned: ' + owned.size + ' of ' + plural(currentEntries.length, 'unit') + ' · Battle-ready: ' + ready
+    : '';
+
+  const box = $('list-entries');
+  box.replaceChildren(...rows.map((row) => entryRow(row, owned.get(row.entry))));
+  $('list-empty').hidden = rows.length > 0;
+  $('list-tip').hidden = rows.length === 0;
+  $('list-add').href = '#/list/' + list.id + '/add';
+  $('list-edit').href = '#/list/' + list.id + '/edit';
+}
+
+// One unit in the list: name and details (tap to open), points, and
+// buttons to change the squad size.
+function entryRow(row, squad) {
+  const entry = row.entry;
+  const item = el('li', 'entry-row');
+
+  const open = el('button', 'entry-text');
+  open.dataset.open = entry.id;
+  open.append(el('div', 'list-title', entry.name));
+  const details = [plural(entry.models, 'model')];
+  if (row.higherCopy) {
+    details.push(ordinal(row.copy) + ' copy: higher cost');
+  }
+  if (row.extra) {
+    details.push('+' + formatPoints(row.extra) + ' extra');
+  }
+  if (!row.unit) {
+    details.push(entry.unitName ? 'saved points' : 'typed by hand');
+  }
+  open.append(el('div', 'list-sub', details.join(' · ')));
+  const status = el('div', 'entry-status');
+  if (squad) {
+    status.append(stageBadge(squad.stage));
+    const have = modelCountOf(squad);
+    if (have < entry.models) {
+      status.append(el('span', 'list-sub', 'own ' + have + ' of ' + entry.models));
+    }
+  } else {
+    status.append(el('span', 'not-owned', 'Not owned'));
+  }
+  open.append(status);
+
+  const buttons = el('div', 'step-buttons size-buttons');
+  const sizes = row.unit ? row.unit.sizes : [];
+  const i = sizes.indexOf(entry.models);
+  if (sizes.length > 1 && i !== -1) {
+    const smaller = el('button', 'small secondary', '−');
+    smaller.setAttribute('aria-label', 'Fewer models in ' + entry.name);
+    const bigger = el('button', 'small secondary', '+');
+    bigger.setAttribute('aria-label', 'More models in ' + entry.name);
+    smaller.dataset.resize = bigger.dataset.resize = entry.id;
+    smaller.dataset.direction = '-1';
+    bigger.dataset.direction = '1';
+    setInactive(smaller, i === 0);
+    setInactive(bigger, i === sizes.length - 1);
+    buttons.append(smaller, bigger);
+  }
+
+  item.append(open, el('div', 'entry-points', formatPoints(row.points)), buttons);
+  return item;
+}
+
+handleQuickTaps($('list-entries'), (button) => {
+  if (button.dataset.open) {
+    location.hash = '#/entry/' + button.dataset.open;
+  } else if (button.dataset.resize) {
+    resizeEntry(Number(button.dataset.resize), Number(button.dataset.direction));
+  }
+});
+
+// Move a unit to the next squad size up or down.
+function resizeEntry(entryId, direction) {
+  const entry = currentEntries.find((e) => e.id === entryId);
+  const unit = entry && listUnits.get(entry.unitName);
+  if (!unit) {
+    return;
+  }
+  const i = unit.sizes.indexOf(entry.models);
+  const size = unit.sizes[i + direction];
+  if (i === -1 || size === undefined) {
+    return;
+  }
+  entry.models = size;
+  entry.points = rowOf(entry).base;
+  drawList();
+  const fields = { models: entry.models, points: entry.points };
+  queueSave(() => db.listEntries.update(entryId, fields));
+}
+
+$('list-share').addEventListener('click', () => {
+  const { rows, total } = priceList(currentEntries, listUnits);
+  const text = listText(currentList, currentListArmy.name, rows, total);
+  shareText(currentList.name, text, 'list-share-status', 'list-share-text');
+});
+
+$('list-duplicate').addEventListener('click', async () => {
+  await saveQueue;
+  const id = await duplicateList(currentList.id);
+  goTo('#/list/' + id);
+});
+
+$('list-delete').addEventListener('click', async () => {
+  if (!confirm('Delete the list "' + currentList.name + '"? Your miniatures are not affected.')) {
+    return;
+  }
+  await saveQueue;
+  await deleteList(currentList.id);
+  goTo('#/army/' + currentList.armyId);
+});
+
+// ---------- Adding units to a list ----------
+
+let listSearchUnits = [];
+
+async function showListAdd(listId) {
+  if (!(await loadList(listId))) {
+    return goTo('#/');
+  }
+  $('list-add-back').href = '#/list/' + listId;
+  $('list-add-back').textContent = '‹ ' + currentList.name;
+  setText('list-add-status', 'Tap a unit to add it to the list.');
+
+  listSearchUnits = [...listUnits.values()];
+  let offNote = '';
+  if (!currentListArmy.factionId) {
+    offNote = 'Tip: pick a faction for this army (Edit army) to search its units with their points. Until then, add units by hand below.';
+  } else if (!listSearchUnits.length) {
+    offNote = 'The unit list could not be loaded. Units can still be added by hand below.';
+  }
+  $('list-search-box').hidden = !listSearchUnits.length;
+  $('list-search-off').textContent = offNote;
+  $('list-search-off').hidden = !offNote;
+  $('list-search').value = '';
+  drawListResults();
+
+  $('hand-name').value = '';
+  $('hand-models').value = 1;
+  $('hand-points').value = '';
+  drawAddSummary();
+  drawOwnedSquads();
+  showScreen('list-add');
+}
+
+// The list's total at the top of the add screen (it stays in view while scrolling).
+function drawAddSummary() {
+  const { total } = priceList(currentEntries, listUnits);
+  const limit = currentList.pointsLimit;
+  setText('list-add-total', pointsOfLimit(total, limit) + ' · ' + pointsLeft(total, limit), total > limit ? 'bad' : null);
+}
+
+function showAdded(row, extraNote) {
+  const entry = row.entry;
+  let text = 'Added ' + entry.name + ' (' + plural(entry.models, 'model') + ', ' + formatPoints(row.points) + ' pts)';
+  if (row.higherCopy) {
+    text += ', ' + ordinal(row.copy) + ' copy costs more';
+  }
+  setText('list-add-status', text + '.' + (extraNote ? ' ' + extraNote : ''), 'ok');
+  drawAddSummary();
+  drawListResults();
+  drawOwnedSquads();
+}
+
+// "5 models: 95 pts, 10 models: 175 pts" for the next copy of a unit
+function describePrices(unit, copy) {
+  return unit.sizes.map((size) => {
+    const price = priceOf(unit, copy, size);
+    return plural(size, 'model') + (price === null ? '' : ': ' + formatPoints(price) + ' pts');
+  }).join(', ');
+}
+
+function drawListResults() {
+  const query = $('list-search').value.trim();
+  const list = $('list-results');
+  list.replaceChildren();
+  if (!query) {
+    $('list-search-note').textContent = 'Search ' + listSearchUnits.length + ' ' + (currentListArmy.faction || '') +
+      ' units. Tap a unit to add it; tap again to add another copy.';
+    return;
+  }
+  const found = searchUnits(listSearchUnits, query);
+  for (const unit of found.slice(0, MAX_RESULTS)) {
+    const inList = currentEntries.filter((e) => e.unitName === unit.name).length;
+    const button = el('button', 'list-item unit-result');
+    button.type = 'button';
+    button.dataset.add = unit.name;
+    const text = el('div', 'list-text');
+    text.append(el('div', 'list-title', unit.name));
+    text.append(el('div', 'list-sub', describePrices(unit, inList + 1)));
+    const owned = ownedOf(unit.name, listSquads);
+    const notes = [unit.group, owned ? 'You own ' + owned : '', inList ? 'In this list: ' + inList : ''].filter(Boolean);
+    if (notes.length) {
+      text.append(el('div', 'list-sub', notes.join(' · ')));
+    }
+    button.append(text);
+    if (unit.legends) {
+      button.append(el('span', 'badge legends', 'Legends'));
+    }
+    const item = el('li');
+    item.append(button);
+    list.append(item);
+  }
+  let note = found.length === 0 ? 'No units match. You can type the unit in by hand below.' : '';
+  if (found.length > MAX_RESULTS) {
+    note = 'Showing ' + MAX_RESULTS + ' of ' + found.length + '. Keep typing to narrow it down.';
+  }
+  $('list-search-note').textContent = note;
+}
+
+$('list-search').addEventListener('input', drawListResults);
+
+// The keyboard's Search/Enter key: if exactly one unit matches, add it;
+// otherwise just close the keyboard.
+$('list-search').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') {
+    return;
+  }
+  event.preventDefault();
+  const query = $('list-search').value.trim();
+  const found = query ? searchUnits(listSearchUnits, query) : [];
+  if (found.length === 1) {
+    addUnit(found[0]);
+  }
+  $('list-search').blur();
+});
+
+handleQuickTaps($('list-results'), (button) => {
+  const unit = listUnits.get(button.dataset.add);
+  if (unit) {
+    $('list-search').blur();
+    addUnit(unit);
+  }
+});
+
+function addUnit(unit) {
+  showAdded(addEntry({ unitName: unit.name, name: unit.name, models: unit.sizes[0] || 1 }));
+}
+
+// The army's squads, to add to the list in one tap.
+function drawOwnedSquads() {
+  const inList = new Set(matchOwned(currentEntries, listSquads).values());
+  const list = $('list-owned-units');
+  list.replaceChildren();
+  for (const squad of listSquads) {
+    const button = el('button', 'list-item unit-result');
+    button.type = 'button';
+    button.dataset.squad = squad.id;
+    const text = el('div', 'list-text');
+    text.append(el('div', 'list-title', squad.name));
+    text.append(el('div', 'list-sub', plural(modelCountOf(squad), 'model') + (inList.has(squad) ? ' · in this list' : '')));
+    button.append(text, stageBadge(squad.stage));
+    const item = el('li');
+    item.append(button);
+    list.append(item);
+  }
+  $('list-owned-empty').hidden = listSquads.length > 0;
+}
+
+handleQuickTaps($('list-owned-units'), (button) => {
+  const squad = listSquads.find((s) => s.id === Number(button.dataset.squad));
+  if (squad) {
+    addSquad(squad);
+  }
+});
+
+// Add an owned squad. Its unit is found by the unit picked when it was added,
+// or else by its name. Without a match, the hand-typed form is filled in.
+function addSquad(squad) {
+  const key = nameKey(squad.unitName || squad.name);
+  const unit = listUnits.get(squad.unitName) || listSearchUnits.find((u) => nameKey(u.name) === key);
+  const have = modelCountOf(squad);
+  if (!unit) {
+    $('hand-name').value = squad.name;
+    $('hand-models').value = have;
+    $('hand-points').value = '';
+    setText('list-add-status', '"' + squad.name + '" was not found in the points data. Enter its points under "Type by hand".', 'bad');
+    $('list-hand-form').scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
+  const models = fitSize(unit, have);
+  const note = models === have ? '' : 'Your squad has ' + have + ' models; the list uses the nearest size, ' + models + '.';
+  showAdded(addEntry({ unitName: unit.name, name: unit.name, models }), note);
+}
+
+$('list-hand-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const name = $('hand-name').value.trim();
+  const models = Math.round(Number($('hand-models').value));
+  const points = Math.round(Number($('hand-points').value));
+  if (!name || !(models >= 1) || !(points >= 0) || $('hand-points').value === '') {
+    return;
+  }
+  showAdded(addEntry({ unitName: null, name, models, points }));
+  $('hand-name').value = '';
+  $('hand-models').value = 1;
+  $('hand-points').value = '';
+  document.activeElement.blur();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+// ---------- One unit in a list ----------
+
+let currentEntry = null;
+
+async function showEntry(entryId) {
+  const saved = await db.listEntries.get(entryId);
+  if (!saved || !(await loadList(saved.listId))) {
+    return goTo('#/');
+  }
+  const entry = currentEntries.find((e) => e.id === entryId);
+  const row = rowOf(entry);
+  currentEntry = entry;
+
+  $('entry-back').href = '#/list/' + currentList.id;
+  $('entry-back').textContent = '‹ ' + currentList.name;
+  $('entry-title').textContent = entry.name;
+  let about = 'Typed by hand.';
+  if (row.unit) {
+    about = 'Points data: ' + row.unit.name + (row.copy > 1 ? ' · ' + ordinal(row.copy) + ' copy in this list' : '');
+  } else if (entry.unitName) {
+    about = '"' + entry.unitName + '" has no points for this squad size in the data for this army, so the saved points are used.';
+  }
+  $('entry-unit-text').textContent = about;
+  $('entry-name').value = entry.name;
+
+  // Units from the points data pick a squad size; others type models and points.
+  const select = $('entry-size');
+  if (row.unit) {
+    select.replaceChildren(...row.unit.sizes.map((size) => {
+      const price = priceOf(row.unit, row.copy, size);
+      const option = el('option', '', plural(size, 'model') + (price === null ? '' : ': ' + formatPoints(price) + ' pts'));
+      option.value = size;
+      return option;
+    }));
+    select.value = entry.models;
+  }
+  $('entry-size-label').hidden = !row.unit;
+  $('entry-models-label').hidden = Boolean(row.unit);
+  $('entry-points-label').hidden = Boolean(row.unit);
+  $('entry-models').value = entry.models;
+  $('entry-points').value = entry.points;
+  $('entry-extra').value = entry.extraPoints || '';
+  showScreen('entry');
+}
+
+$('entry-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const entry = currentEntry;
+  const fromData = !$('entry-size-label').hidden;
+  const name = $('entry-name').value.trim();
+  const models = Math.round(Number(fromData ? $('entry-size').value : $('entry-models').value));
+  const points = Math.round(Number($('entry-points').value));
+  const extraPoints = Math.max(0, Math.round(Number($('entry-extra').value) || 0));
+  if (!name || !(models >= 1) || (!fromData && !(points >= 0))) {
+    return;
+  }
+  Object.assign(entry, { name, models, extraPoints });
+  if (!fromData) {
+    entry.points = points;
+  }
+  entry.points = rowOf(entry).base;
+  await db.listEntries.update(entry.id, { name, models, extraPoints, points: entry.points });
+  goTo('#/list/' + currentList.id);
+});
+
+$('entry-copy').addEventListener('click', () => {
+  const entry = currentEntry;
+  addEntry({ unitName: entry.unitName, name: entry.name, models: entry.models, points: entry.points });
+  goTo('#/list/' + currentList.id);
+});
+
+$('entry-remove').addEventListener('click', async () => {
+  if (!confirm('Remove "' + currentEntry.name + '" from this list?')) {
+    return;
+  }
+  await db.listEntries.delete(currentEntry.id);
+  goTo('#/list/' + currentList.id);
+});
+
 // ---------- Settings / Diagnostics ----------
 
 function isStandalone() {
@@ -2504,6 +3088,10 @@ async function refreshDiagnostics() {
     spinBytes += (spin.frames || []).reduce((sum, frame) => sum + frame.size, 0) + (spin.thumb ? spin.thumb.size : 0);
   });
   setText('diag-spins', spinCount ? plural(spinCount, 'spin') + ', ' + formatSize(spinBytes) : 'none yet');
+
+  const listCount = await db.lists.count();
+  const entryCount = await db.listEntries.count();
+  setText('diag-lists', listCount ? plural(listCount, 'list') + ', ' + plural(entryCount, 'unit') + ' in total' : 'none yet');
 
   if (!('serviceWorker' in navigator)) {
     setText('diag-sw', 'not supported', 'bad');
